@@ -4,6 +4,7 @@ using MonstrosityFramework.Framework.Data;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection; // <--- Necesario para el truco de Reflection
 using StardewValley;
 
 namespace MonstrosityFramework.Framework.Registries
@@ -29,17 +30,17 @@ namespace MonstrosityFramework.Framework.Registries
 
             _hasTriedLoading = true;
 
-            // 1. INTENTO: Carga vía Content Pipeline (Para Content Patcher)
+            // 1. INTENTO: Carga vía Content Pipeline (Ideal para Content Patcher)
             try
             {
-                // Si es una ruta virtual o no tiene extensión de archivo, asumimos que es un Asset
+                // Si el path no tiene extensión (.png) o es una ruta virtual, esto funcionará.
                 _textureCache = Game1.content.Load<Texture2D>(Data.TexturePath);
                 _textureCache.Name = Data.TexturePath;
                 return _textureCache;
             }
             catch 
             {
-                // Si falla, no pasa nada, intentamos el método físico (C# Mod)
+                // Si falla (ej: es un archivo físico local no registrado), pasamos al intento 2.
             }
 
             // 2. INTENTO: Carga física directa (Para Mods C# como el DemoPack)
@@ -50,16 +51,26 @@ namespace MonstrosityFramework.Framework.Registries
                                      : OwnerMod.UniqueID;
 
                 IModInfo modInfo = ModEntry.ModHelper.ModRegistry.Get(targetModId);
+                
                 if (modInfo != null)
                 {
-                    string fullPath = Path.Combine(modInfo.LocalAppPath, Data.TexturePath);
-                    if (File.Exists(fullPath))
+                    // --- TRUCO DE REFLECTION ---
+                    // IModInfo oculta la ruta física por seguridad, pero la implementación interna la tiene.
+                    // Usamos Reflection para obtener la propiedad "DirectoryPath".
+                    PropertyInfo pathProp = modInfo.GetType().GetProperty("DirectoryPath");
+                    string modPath = pathProp?.GetValue(modInfo) as string;
+
+                    if (!string.IsNullOrEmpty(modPath))
                     {
-                        using (FileStream stream = new FileStream(fullPath, FileMode.Open))
+                        string fullPath = Path.Combine(modPath, Data.TexturePath);
+                        if (File.Exists(fullPath))
                         {
-                            _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
-                            _textureCache.Name = $"{targetModId}/{Data.TexturePath}";
-                            return _textureCache;
+                            using (FileStream stream = new FileStream(fullPath, FileMode.Open))
+                            {
+                                _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
+                                _textureCache.Name = $"{targetModId}/{Data.TexturePath}";
+                                return _textureCache;
+                            }
                         }
                     }
                 }
