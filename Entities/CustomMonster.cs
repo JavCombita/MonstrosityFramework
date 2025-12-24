@@ -34,7 +34,7 @@ namespace MonstrosityFramework.Entities
         protected override void initNetFields()
         {
             base.initNetFields();
-            this.NetFields.AddFields(MonsterSourceId);
+            this.NetFields.AddField(MonsterSourceId);
             
             // Cuando el ID cambie (ej: cliente conectándose), recargar datos
             this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => ReloadData();
@@ -80,7 +80,7 @@ namespace MonstrosityFramework.Entities
         public override void behaviorAtGameTick(GameTime time)
         {
             // Si el jugador está muy lejos, no procesar IA (Optimización)
-            if (!isWithinPlayerThreshold(16)) return;
+            if (!withinPlayerThreshold(16)) return;
 
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             string behavior = entry?.Data.BehaviorType ?? "Default";
