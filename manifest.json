@@ -2,17 +2,17 @@
   "Name": "Monstrosity Framework",
   "Author": "JavCombita",
   "Version": "1.0.0",
-  "Description": "Framework avanzado para agregar nuevos monstruos con IA propia y drops personalizados.",
+  "Description": "Framework avanzado para la creación de monstruos personalizados con IA y habilidades únicas.",
   "UniqueID": "JavCombita.MonstrosityFramework",
   "EntryDll": "MonstrosityFramework.dll",
   "MinimumApiVersion": "4.0.0",
-  "UpdateKeys": [ "" ], 
+  "UpdateKeys": [], 
   "Dependencies": [
     {
       "UniqueID": "spacechase0.SpaceCore",
-      "IsRequired": false
+      "IsRequired": false 
     },
-	{
+    {
       "UniqueID": "Pathoschild.ContentPatcher",
       "IsRequired": false
     }
