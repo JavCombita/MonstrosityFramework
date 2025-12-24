@@ -1,23 +1,38 @@
-# 🦁 Monstrosity Framework
+Markdown# 🦁 Monstrosity Framework: La Guía Definitiva
 
-> **El Motor de Élite para Monstruos Personalizados en Stardew Valley.**
+> **El Motor de Élite para la Creación de Monstruos en Stardew Valley.**
 
-**Monstrosity Framework** es una infraestructura de alto nivel que permite a los modders agregar nuevos monstruos al juego utilizando simples archivos JSON y texturas. Maneja automáticamente la serialización compleja (SpaceCore), la sincronización multijugador y la inyección procedural en las minas.
+**Monstrosity Framework** es una infraestructura avanzada que permite a los modders agregar nuevos enemigos al juego **sin necesidad de programar lógica compleja**.
 
-¡Ya no necesitas ser un experto en C# para crear enemigos nuevos!
+El framework se encarga automáticamente de:
+* ✅ **IA y Comportamiento:** Lógica de persecución, sigilo o tanque.
+* ✅ **Persistencia (SpaceCore):** Guardado y carga de datos sin corromper partidas.
+* ✅ **Spawning Procedural:** Aparición natural en las minas según tus reglas.
+* ✅ **Sincronización Multijugador:** Los monstruos se ven y comportan igual para todos los jugadores.
 
 ---
 
-## 📦 Instalación
+## 📑 Tabla de Contenidos
 
-### Para Jugadores
-1. Instala la última versión de **[SMAPI](https://smapi.io/)**.
-2. Instala **[SpaceCore](https://www.nexusmods.com/stardewvalley/mods/1348)** (Requerido para que el juego pueda guardar la partida sin errores).
-3. Descarga e instala **Monstrosity Framework** en tu carpeta `Mods`.
-4. Instala cualquier **Content Pack** (Mod de Monstruos) que use este framework.
+1.  [Instalación y Requisitos](#-instalación-y-requisitos)
+2.  [Cómo Crear tu Mod (Paso a Paso)](#-cómo-crear-tu-mod-paso-a-paso)
+3.  [Documentación de monsters.json](#-documentación-de-monstersjson)
+4.  [Guía de Sprites](#-guía-de-sprites-arte)
+5.  [Kit de Ejemplos (Copiar y Pegar)](#-kit-de-ejemplos-listos-para-usar)
+6.  [Comandos de Debug](#-comandos-de-consola)
+
+---
+
+## 📦 Instalación y Requisitos
+
+### Para Jugadores (Usuarios Finales)
+1.  Instalar la última versión de **[SMAPI](https://smapi.io/)**.
+2.  Instalar **[SpaceCore](https://www.nexusmods.com/stardewvalley/mods/1348)** (Obligatorio para guardar la partida).
+3.  Instalar **Monstrosity Framework**.
+4.  Instalar los Content Packs que deseen.
 
 ### Para Modders (Dependencias)
-Si estás creando un mod, agrega esto a tu `manifest.json`:
+En tu archivo `manifest.json`, debes declarar la dependencia para asegurar que el framework cargue antes que tu mod.
 
 ```json
 "Dependencies": [
@@ -26,3 +41,133 @@ Si estás creando un mod, agrega esto a tu `manifest.json`:
       "IsRequired": true
    }
 ]
+
+---
+
+## 🛠️ Cómo Crear tu Mod (Paso a Paso)
+Para agregar monstruos, crearás un mod estándar de SMAPI que actúa como "puente" para pasarle los datos al Framework.1. Estructura de CarpetasOrganiza tu proyecto exactamente así:
+
+MyDungeonMod/
+├── manifest.json           <-- Identidad del mod
+├── MyDungeonMod.dll        <-- Tu código compilado (ver punto 2)
+└── assets/
+    ├── monsters.json       <-- Configuración de stats y drops
+    └── sprites/            <-- Tus imágenes PNG
+        ├── goblin.png
+        └── ghost.png
+		
+2. El Código Puente (ModEntry.cs)No necesitas programar IA. Solo necesitas este código para registrar tus archivos JSON en el sistema.C#using System;
+using System.Collections.Generic;
+using StardewModdingAPI;
+using StardewModdingAPI.Events;
+
+namespace MyDungeonMod
+{
+    // 1. Definimos la Interfaz para hablar con el Framework
+    public interface IMonstrosityApi
+    {
+        void RegisterMonster(IManifest mod, string id, object data);
+    }
+
+    public class ModEntry : Mod
+    {
+        public override void Entry(IModHelper helper)
+        {
+            // Esperamos a que el juego arranque para registrar
+            helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+        }
+
+        private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
+        {
+            // 2. Buscamos la API
+            var api = Helper.ModRegistry.GetApi<IMonstrosityApi>("TuNombre.MonstrosityFramework");
+            if (api == null) return;
+
+            // 3. Leemos nuestro archivo monsters.json
+            var monsters = Helper.Data.ReadJsonFile<Dictionary<string, object>>("assets/monsters.json");
+            
+            if (monsters != null)
+            {
+                foreach (var kvp in monsters)
+                {
+                    // 4. Enviamos los datos al Framework
+                    api.RegisterMonster(this.ModManifest, kvp.Key, kvp.Value);
+                    Monitor.Log($"Monstruo registrado: {kvp.Key}", LogLevel.Info);
+                }
+            }
+        }
+    }
+}
+📜 Documentación de monsters.jsonEste archivo controla todo. Es un diccionario donde la Clave es el ID interno y el Valor son sus propiedades.Tabla de PropiedadesPropiedadTipoDescripciónEjemploDisplayNameStringEl nombre visible del monstruo."Rey Goblin"TexturePathStringRuta a la imagen relativa a tu carpeta de mod."assets/sprites/king.png"SpriteWidthIntAncho de un solo cuadro (frame) en píxeles.16 o 32SpriteHeightIntAlto de un solo cuadro en píxeles.24 o 32MaxHealthIntVida total.150DamageToFarmerIntDaño que hace al tocar al jugador.12BehaviorTypeStringTipo de Inteligencia Artificial (ver abajo)."Stalker"SpawnObjetoReglas de aparición en la mina.Ver ejemploDropsListaLista de objetos que suelta al morir.Ver ejemploTipos de IA (BehaviorType)"Default": Comportamiento estándar (como murciélagos o slimes). Persigue al jugador en línea recta."Stalker": IA Avanzada. Solo se mueve hacia el jugador si este no lo está mirando. Se congela si lo miras."Tank": Movimiento lento, imparable, ignora colisiones menores. Ideal para jefes o golems.🎨 Guía de Sprites (Arte)El sistema usa el formato estándar de Stardew Valley. Tu PNG debe contener 4 filas de animación.La Regla MatemáticaAncho de Imagen = SpriteWidth x 4Alto de Imagen = SpriteHeight x 4Layout de AnimaciónPlaintext       Frame 0   Frame 1   Frame 2   Frame 3
+      +---------+---------+---------+---------+
+Fila 0|  Abajo  |  Abajo  |  Abajo  |  Abajo  |  (Caminando hacia la cámara)
+      +---------+---------+---------+---------+
+Fila 1| Derecha | Derecha | Derecha | Derecha |
+      +---------+---------+---------+---------+
+Fila 2| Arriba  | Arriba  | Arriba  | Arriba  |  (De espaldas)
+      +---------+---------+---------+---------+
+Fila 3| Izq.    | Izq.    | Izq.    | Izq.    |
+      +---------+---------+---------+---------+
+🧪 Kit de Ejemplos (Listos para Usar)Copia este contenido en tu assets/monsters.json para empezar inmediatamente con 3 monstruos funcionales.JSON{
+  "GoblinGrunt": {
+    "DisplayName": "Recluta Goblin",
+    "TexturePath": "assets/sprites/goblin_grunt.png",
+    "SpriteWidth": 16,
+    "SpriteHeight": 24,
+    "MaxHealth": 45,
+    "DamageToFarmer": 8,
+    "Exp": 5,
+    "BehaviorType": "Default",
+    "Spawn": {
+      "MinMineLevel": 10,
+      "MaxMineLevel": 40,
+      "SpawnWeight": 1.0
+    },
+    "Drops": [
+      { "ItemId": "388", "Chance": 0.5 }, 
+      { "ItemId": "86", "Chance": 0.05 }
+    ]
+  },
+
+  "VoidWraith": {
+    "DisplayName": "Espectro del Vacío",
+    "TexturePath": "assets/sprites/void_wraith.png",
+    "SpriteWidth": 32,
+    "SpriteHeight": 32,
+    "MaxHealth": 200,
+    "DamageToFarmer": 20,
+    "Speed": 4,
+    "BehaviorType": "Stalker",
+    "Spawn": {
+      "MinMineLevel": 80,
+      "MaxMineLevel": 120,
+      "SpawnWeight": 0.15
+    },
+    "Drops": [
+      { "ItemId": "769", "Chance": 1.0 },
+      { "ItemId": "768", "Chance": 0.5 },
+      { "ItemId": "337", "Chance": 0.02 }
+    ]
+  },
+
+  "GoldenGolem": {
+    "DisplayName": "Gólem Dorado",
+    "TexturePath": "assets/sprites/golden_golem.png",
+    "SpriteWidth": 16,
+    "SpriteHeight": 24,
+    "MaxHealth": 600,
+    "DamageToFarmer": 15,
+    "Speed": 1,
+    "BehaviorType": "Tank",
+    "Spawn": {
+      "MinMineLevel": 50,
+      "MaxMineLevel": 120,
+      "SpawnWeight": 0.02
+    },
+    "Drops": [
+      { "ItemId": "336", "Chance": 1.0, "MinStack": 3, "MaxStack": 6 },
+      { "ItemId": "74", "Chance": 0.05 }
+    ]
+  }
+}
+Referencia Rápida de Items (IDs)388: Madera336: Lingote de Oro337: Lingote de Iridio768: Esencia Solar769: Esencia Nula74: Esquirla Prismática (Prismatic Shard)🔧 Comandos de ConsolaUsa la consola de SMAPI (la ventana negra que se abre con el juego) para probar tus monstruos sin tener que buscarlos en la mina.monster_listMuestra una lista de todos los monstruos registrados correctamente.monster_spawn <ID_Completo>Hace aparecer un monstruo frente a ti.Nota: El ID completo se forma así: TuModID.NombreDelJSON.Ejemplo: monster_spawn TuNombre.MyDungeonMod.GoblinGrunt
