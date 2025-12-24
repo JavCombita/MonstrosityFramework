@@ -50,6 +50,7 @@ Para agregar monstruos, crearás un mod estándar de SMAPI que actúa como "puen
 
 1. Estructura de CarpetasOrganiza tu proyecto exactamente así:
 
+```json
 MyDungeonMod/
 ├── manifest.json           <-- Identidad del mod
 ├── MyDungeonMod.dll        <-- Tu código compilado (ver punto 2)
@@ -58,6 +59,7 @@ MyDungeonMod/
     └── sprites/            <-- Tus imágenes PNG
         ├── goblin.png
         └── ghost.png
+```
 		
 2. El Código Puente (ModEntry.cs)No necesitas programar IA. Solo necesitas este código para registrar tus archivos JSON en el sistema.
 
@@ -140,16 +142,16 @@ La Regla Matemática:
 
 Ancho de Imagen = SpriteWidth x 4 Alto de Imagen = SpriteHeight x 4 Layout de Animación
 
-        Frame 0   Frame 1   Frame 2   Frame 3
-      +---------+---------+---------+---------+
-Fila 0|  Abajo  |  Abajo  |  Abajo  |  Abajo  |  (Caminando hacia la cámara)
-      +---------+---------+---------+---------+
-Fila 1| Derecha | Derecha | Derecha | Derecha |
-      +---------+---------+---------+---------+
-Fila 2| Arriba  | Arriba  | Arriba  | Arriba  |  (De espaldas)
-      +---------+---------+---------+---------+
-Fila 3| Izq.    | Izq.    | Izq.    | Izq.    |
-      +---------+---------+---------+---------+
+| | Frame 0 | Frame 1 | Frame 2 | Frame 3 |
+|---|---|---|---|---|
+| Fila 0| Abajo | Abajo | Abajo | Abajo | (Caminando hacia la cámara)
+|---|---|---|---|---|
+| Fila 1| Derecha | Derecha | Derecha | Derecha |
+|---|---|---|---|---|
+| Fila 2| Arriba | Arriba | Arriba | Arriba | (De espaldas)
+|---|---|---|---|---|
+| Fila 3| Izq. | Izq. | Izq. | Izq. |
+|---|---|---|---|---|
 
 ---
 
