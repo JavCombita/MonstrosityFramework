@@ -114,27 +114,17 @@ Este archivo controla todo. Es un diccionario donde la Clave es el ID interno y 
 
 Tabla de Propiedades.
 
-+----------------+----------+------------------------------------------------+---------------------------+
-|  **Propiedad** | **Tipo** |                 **Descripción**                |        **Ejemplo**        |
-+----------------+----------+------------------------------------------------+---------------------------+
-|   DisplayName  |  String  |         El nombre visible del monstruo.        |        "Rey Goblin"       |
-+----------------+----------+------------------------------------------------+---------------------------+
-|   TexturePath  |  String  | Ruta a la imagen relativa a tu carpeta de mod. | "assets/sprites/king.png" |
-+----------------+----------+------------------------------------------------+---------------------------+
-|   SpriteWidth  |    Int   |   Ancho de un solo cuadro (frame) en píxeles.  |          16 o 32          |
-+----------------+----------+------------------------------------------------+---------------------------+
-|  SpriteHeight  |    Int   |       Alto de un solo cuadro en píxeles.       |          24 o 32          |
-+----------------+----------+------------------------------------------------+---------------------------+
-|    MaxHealth   |    Int   |                   Vida total.                  |            150            |
-+----------------+----------+------------------------------------------------+---------------------------+
-| DamageToFarmer |    Int   |       Daño que hace al tocar al jugador.       |             12            |
-+----------------+----------+------------------------------------------------+---------------------------+
-|  BehaviorType  |  String  |  Tipo de Inteligencia Artificial (ver abajo).  |         "Stalker"         |
-+----------------+----------+------------------------------------------------+---------------------------+
-|      Spawn     |  Objeto  |         Reglas de aparición en la mina.        |        Ver ejemplo        |
-+----------------+----------+------------------------------------------------+---------------------------+
-|      Drops     |   Lista  |      Lista de objetos que suelta al morir.     |        Ver ejemplo        |
-+----------------+----------+------------------------------------------------+---------------------------+
+| Propiedad | Tipo | Descripción | Ejemplo |
+|---|---|---|---|
+| DisplayName | String | El nombre visible del monstruo. | "Rey Goblin" |
+| TexturePath | String | Ruta a la imagen relativa a tu carpeta de mod. | "assets/sprites/king.png" |
+| SpriteWidth | Int | Ancho de un solo cuadro (frame) en píxeles. | 16 o 32 |
+| SpriteHeight | Int | Alto de un solo cuadro en píxeles. | 24 o 32 |
+| MaxHealth | Int | Vida total. | 150 |
+| DamageToFarmer | Int | Daño que hace al tocar al jugador. | 12 |
+| BehaviorType | String | Tipo de Inteligencia Artificial (ver abajo). | "Stalker" |
+| Spawn | Objeto | Reglas de aparición en la mina. | Ver ejemplo |
+| Drops | Lista | Lista de objetos que suelta al morir. | Ver ejemplo |
 
 Tipos de IA (BehaviorType)
 "Default": Comportamiento estándar (como murciélagos o slimes). Persigue al jugador en línea recta.
