@@ -28,7 +28,7 @@ jobs:
 
     - name: Create Release Structure
       run: |
-        mkdir -p release/MonstrosityFramework"
+        mkdir -p release/MonstrosityFramework
 
     - name: Package Core Module
       run: |
