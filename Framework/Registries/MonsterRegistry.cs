@@ -3,6 +3,7 @@ using StardewModdingAPI;
 using MonstrosityFramework.Framework.Data;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using StardewValley;
 
 namespace MonstrosityFramework.Framework.Registries
@@ -28,29 +29,47 @@ namespace MonstrosityFramework.Framework.Registries
 
             _hasTriedLoading = true;
 
+            // 1. INTENTO: Carga vía Content Pipeline (Para Content Patcher)
             try
             {
-                // CORRECCIÓN MAYOR: Ya no usamos FileStream ni LocalAppPath.
-                // Usamos el Content Pipeline del juego.
-                // Content Patcher mapea archivos a rutas virtuales, así que esto funcionará
-                // si el TexturePath es una ruta válida del juego (ej: "Mods/MyMod/Sprite").
-                
-                // Si el path no tiene extensión o parece un Asset Key, probamos cargarlo.
-                // Nota: Si el usuario pone "assets/sprite.png", esto fallará a menos que el mod hijo
-                // use Content Patcher para cargar ese archivo como Asset.
-                
+                // Si es una ruta virtual o no tiene extensión de archivo, asumimos que es un Asset
                 _textureCache = Game1.content.Load<Texture2D>(Data.TexturePath);
                 _textureCache.Name = Data.TexturePath;
-                
                 return _textureCache;
+            }
+            catch 
+            {
+                // Si falla, no pasa nada, intentamos el método físico (C# Mod)
+            }
+
+            // 2. INTENTO: Carga física directa (Para Mods C# como el DemoPack)
+            try
+            {
+                string targetModId = !string.IsNullOrEmpty(Data.ContentPackID) 
+                                     ? Data.ContentPackID 
+                                     : OwnerMod.UniqueID;
+
+                IModInfo modInfo = ModEntry.ModHelper.ModRegistry.Get(targetModId);
+                if (modInfo != null)
+                {
+                    string fullPath = Path.Combine(modInfo.LocalAppPath, Data.TexturePath);
+                    if (File.Exists(fullPath))
+                    {
+                        using (FileStream stream = new FileStream(fullPath, FileMode.Open))
+                        {
+                            _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
+                            _textureCache.Name = $"{targetModId}/{Data.TexturePath}";
+                            return _textureCache;
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
-                // Fallback para C# Mods (Si pasan ruta local):
-                // En el futuro, deberíamos pedirles el Texture2D directamente en la API.
-                ModEntry.StaticMonitor.Log($"No se pudo cargar textura '{Data.TexturePath}'. Asegúrate de que sea un Asset Key válido o cargado por Content Patcher. Error: {ex.Message}", LogLevel.Warn);
-                return null;
+                ModEntry.StaticMonitor.Log($"[MonsterRegistry] Fallo total cargando textura '{Data.TexturePath}': {ex.Message}", LogLevel.Error);
             }
+
+            return null;
         }
 
         public void Dispose()

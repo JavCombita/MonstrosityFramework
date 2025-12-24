@@ -50,27 +50,31 @@ namespace MonstrosityFramework.Entities
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             if (entry == null)
             {
-                // Fallback: Si el mod hijo fue borrado, convertimos esto en un Green Slime genérico
-                // para evitar crashes, o simplemente lo hacemos invisible.
                 this.Name = "Unknown Monster";
                 return;
             }
 
-            // 1. Aplicar Stats
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
             this.Health = this.MaxHealth;
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             
-            // 2. Inyección de Sprite (Magia Negra)
-            // Creamos un AnimatedSprite vacío y luego le inyectamos la textura cruda manualmente.
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             
             Texture2D customTex = entry.GetTexture();
+            
+            // --- BLOQUE DE SEGURIDAD ---
             if (customTex != null)
             {
                 this.Sprite.spriteTexture = customTex;
+            }
+            else
+            {
+                // FALLBACK: Si no hay textura, usamos la del Shadow Brute para evitar Crash por 'shedChunks'
+                this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute");
+                // (Opcional) Teñirlo de rojo para indicar error visualmente
+                // this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute"); 
             }
             
             // Forzar hitbox
