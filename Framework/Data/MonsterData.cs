@@ -52,14 +52,6 @@ namespace MonstrosityFramework.Framework.Data
         public Dictionary<string, string> CustomFields { get; set; } = new();
     }
 
-    public class MonsterDropData
-    {
-        public string ItemId { get; set; } // String para compatibilidad 1.6+
-        public float Chance { get; set; } = 0.5f; // 0.0 a 1.0
-        public int MinStack { get; set; } = 1;
-        public int MaxStack { get; set; } = 1;
-    }
-
     public class SpawnRules
     {
         /// <summary>
