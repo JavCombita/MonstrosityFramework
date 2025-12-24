@@ -9,9 +9,10 @@ using StardewValley;
 namespace MonstrosityFramework.Framework.Registries
 {
     /// <summary>
-    /// Clase contenedora que envuelve los datos crudos y gestiona los assets.
+    /// Wrapper que gestiona los assets y la memoria de cada monstruo.
+    /// Implementa IDisposable para limpieza manual de la VRAM.
     /// </summary>
-    public class RegisteredMonster
+    public class RegisteredMonster : IDisposable
     {
         public MonsterData Data { get; }
         public IManifest OwnerMod { get; }
@@ -27,53 +28,75 @@ namespace MonstrosityFramework.Framework.Registries
         }
 
         /// <summary>
-        /// Carga la textura bajo demanda desde la carpeta del mod propietario.
+        /// Carga la textura bajo demanda. 
+        /// Soporta tanto mods C# (usando OwnerMod) como Content Packs (usando Data.ContentPackID).
         /// </summary>
         public Texture2D GetTexture()
         {
-            // 1. Si ya está en cache, retornarla.
-            if (_textureCache != null) return _textureCache;
+            // 1. Si ya está en cache y es válida, retornarla.
+            if (_textureCache != null && !_textureCache.IsDisposed) return _textureCache;
             
-            // 2. Si ya intentamos cargar y falló, no reintentar infinitamente (Performance).
+            // 2. Si ya intentamos cargar y falló anteriormente, no reintentar (Ahorro de CPU).
             if (_hasTriedLoading) return null; 
 
             _hasTriedLoading = true;
 
             try
             {
-                // 3. Localizar la carpeta del mod hijo
-                IModInfo modInfo = ModEntry.ModHelper.ModRegistry.Get(OwnerMod.UniqueID);
+                // 3. Determinar el ID del mod que contiene la textura.
+                // Si Data.ContentPackID tiene valor (viene de Content Patcher), usamos ese.
+                // Si no, usamos el ID del mod que registró el monstruo (OwnerMod).
+                string targetModId = !string.IsNullOrEmpty(Data.ContentPackID) 
+                                     ? Data.ContentPackID 
+                                     : OwnerMod.UniqueID;
+
+                IModInfo modInfo = ModEntry.ModHelper.ModRegistry.Get(targetModId);
+                
                 if (modInfo == null)
                 {
-                    ModEntry.StaticMonitor.Log($"No se encuentra el mod propietario: {OwnerMod.UniqueID}", LogLevel.Error);
+                    ModEntry.StaticMonitor.Log($"[MonsterRegistry] No se encuentra el mod origen: {targetModId}", LogLevel.Error);
                     return null;
                 }
 
-                // 4. Construir ruta absoluta (Cross-Platform safe)
+                // 4. Construir ruta absoluta
                 string fullPath = Path.Combine(modInfo.LocalAppPath, Data.TexturePath);
 
                 if (!File.Exists(fullPath))
                 {
-                    ModEntry.StaticMonitor.Log($"Textura no encontrada: {fullPath}", LogLevel.Error);
+                    ModEntry.StaticMonitor.Log($"[MonsterRegistry] Textura no encontrada: {fullPath}", LogLevel.Warn);
                     return null;
                 }
 
-                // 5. Cargar Texture2D desde Stream (Compatible con Android/PC)
+                // 5. Cargar Texture2D desde Stream
                 using (FileStream stream = new FileStream(fullPath, FileMode.Open))
                 {
                     _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
                 }
 
-                // Parche visual: Si es pixel art, establecer nombre para debug
-                _textureCache.Name = $"{OwnerMod.UniqueID}.{Data.TexturePath}";
+                // Parche visual: Nombre para debug
+                _textureCache.Name = $"{targetModId}.{Data.TexturePath}";
                 
                 return _textureCache;
             }
             catch (Exception ex)
             {
                 ModEntry.StaticMonitor.Log($"Error cargando textura para {Data.DisplayName}: {ex.Message}", LogLevel.Error);
-                return null; // El monstruo será invisible o usará fallback, pero no crasheará.
+                return null; // El monstruo será invisible o usará fallback.
             }
+        }
+
+        /// <summary>
+        /// Libera la memoria de la GPU inmediatamente.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_textureCache != null && !_textureCache.IsDisposed)
+            {
+                _textureCache.Dispose();
+                _textureCache = null;
+            }
+            // Reseteamos el flag para permitir recarga si el jugador vuelve a entrar al mundo
+            _hasTriedLoading = false;
         }
     }
 
@@ -88,7 +111,7 @@ namespace MonstrosityFramework.Framework.Registries
         {
             if (_registry.ContainsKey(uniqueId))
             {
-                ModEntry.StaticMonitor.Log($"Sobreescribiendo definición de monstruo: {uniqueId}", LogLevel.Warn);
+                ModEntry.StaticMonitor.Log($"[MonsterRegistry] Sobreescribiendo definición: {uniqueId}", LogLevel.Warn);
             }
             _registry[uniqueId] = monster;
         }
@@ -103,5 +126,23 @@ namespace MonstrosityFramework.Framework.Registries
         public static IEnumerable<string> GetAllIds() => _registry.Keys;
         
         public static IEnumerable<RegisteredMonster> GetAll() => _registry.Values;
+
+        /// <summary>
+        /// Limpieza masiva de texturas para evitar Memory Leaks.
+        /// SE DEBE LLAMAR EN: GameLoop.ReturnedToTitle
+        /// </summary>
+        public static void Cleanup()
+        {
+            int count = 0;
+            foreach (var monster in _registry.Values)
+            {
+                if (monster != null)
+                {
+                    monster.Dispose();
+                    count++;
+                }
+            }
+            ModEntry.StaticMonitor.Log($"[MonsterRegistry] Memoria liberada de {count} texturas de monstruos.", LogLevel.Info);
+        }
     }
 }

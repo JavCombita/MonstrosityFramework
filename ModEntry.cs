@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -9,111 +10,116 @@ using MonstrosityFramework.Framework.Registries;
 using MonstrosityFramework.Entities;
 using MonstrosityFramework.Integrations;
 using MonstrosityFramework.Patches;
+using MonstrosityFramework.Framework.Data;
 
 namespace MonstrosityFramework
 {
     public class ModEntry : Mod
     {
-        // Acceso estático global para el resto del framework
         public static IModHelper ModHelper;
         public static IMonitor StaticMonitor;
 
-        // Instancia de nuestra API
         private MonstrosityApi _apiInstance;
+        
+        // RUTA MÁGICA: Los usuarios de Content Patcher usarán esto en "Target"
+        private const string CpAssetPath = "Mods/JavCombita/Monstrosity/Data";
 
         public override void Entry(IModHelper helper)
         {
-            // 1. Inicialización Global
             ModHelper = helper;
             StaticMonitor = Monitor;
             _apiInstance = new MonstrosityApi(Monitor);
 
-            // 2. Eventos del Ciclo de Vida
+            // 1. Eventos Core
             helper.Events.GameLoop.GameLaunched += OnGameLaunched;
+            helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
             
-            // 3. Inicializar Sistema de Spawns (Inyección en Minas)
+            // 2. Sistema de Assets Virtuales (Content Patcher Bridge)
+            helper.Events.Content.AssetRequested += OnAssetRequested;
+
+            // 3. Spawner
             var spawner = new SpawnInjector(Monitor);
             spawner.Register(helper);
 
-            // 4. Comandos de Consola (Para pruebas rápidas)
-            helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo registrado.\nUso: monster_spawn <UniqueID>", SpawnDebugMonster);
-            helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos registrados.", ListMonsters);
+            // 4. Comandos
+            helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo por ID.", SpawnDebugMonster);
+            helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos.", ListMonsters);
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
-            // 5. Integración con SpaceCore (Vital para guardar partida)
-            // Esto registra el tipo 'CustomMonster' en el serializador XML.
+            // Inicializar SpaceCore
             bool spaceCoreLoaded = SpaceCoreBridge.Init(Helper, Monitor);
-            
             if (!spaceCoreLoaded)
             {
-                Monitor.Log("ADVERTENCIA: SpaceCore no está instalado o falló al cargar.", LogLevel.Alert);
-                Monitor.Log("Podrás invocar monstruos, pero si guardas la partida con ellos vivos, el juego crasheará.", LogLevel.Alert);
+                Monitor.Log("SpaceCore no encontrado. El guardado de monstruos custom fallará.", LogLevel.Alert);
+            }
+
+            // CARGAR DATOS DE CONTENT PATCHER
+            // Esto fuerza a SMAPI a cargar nuestro asset virtual. Si hay Content Packs, se aplican aquí.
+            try
+            {
+                var cpData = Helper.GameContent.Load<Dictionary<string, MonsterData>>(CpAssetPath);
+                
+                if (cpData != null && cpData.Count > 0)
+                {
+                    Monitor.Log($"Cargando {cpData.Count} monstruos desde Content Patcher...", LogLevel.Info);
+                    foreach (var kvp in cpData)
+                    {
+                        // Registramos usando el Manifest de ESTE mod framework, ya que técnicamente
+                        // es el framework quien carga los datos, pero mantenemos el ID del JSON.
+                        // Nota: Para trazabilidad perfecta, Content Patcher no nos da el ID del mod origen fácilmente
+                        // en este punto, así que usaremos "ContentPatcher" como prefijo implícito o el ID del framework.
+                        _apiInstance.RegisterMonster(this.ModManifest, kvp.Key, kvp.Value);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Monitor.Log($"Error cargando datos de Content Patcher: {ex.Message}", LogLevel.Error);
             }
         }
 
-        // --- EXPOSICIÓN DE LA API ---
-        /// <summary>
-        /// Permite que otros mods llamen a: Helper.ModRegistry.GetApi<IMonstrosityApi>(...)
-        /// </summary>
-        public override object GetApi()
+        // Proveedor del Asset Virtual
+        private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
         {
-            return _apiInstance;
+            if (e.Name.IsEquivalentTo(CpAssetPath))
+            {
+                // Entregamos un diccionario vacío listo para ser parcheado por CP
+                e.LoadFrom(() => new Dictionary<string, MonsterData>(), AssetLoadPriority.Exclusive);
+            }
         }
 
-        // --- COMANDOS DE DEBUG ---
-        
+        private void OnReturnedToTitle(object sender, ReturnedToTitleEventArgs e)
+        {
+            // Limpieza de memoria (VRAM)
+            MonsterRegistry.Cleanup();
+        }
+
+        public override object GetApi() => _apiInstance;
+
+        // --- COMANDOS (Sin cambios mayores, solo referencias) ---
         private void SpawnDebugMonster(string command, string[] args)
         {
-            if (!Context.IsWorldReady)
-            {
-                Monitor.Log("Debes cargar una partida primero.", LogLevel.Warn);
-                return;
-            }
-
-            if (args.Length < 1)
-            {
-                Monitor.Log("Uso: monster_spawn <Author.Mod.Id>", LogLevel.Error);
-                return;
-            }
-
+            if (!Context.IsWorldReady || args.Length < 1) return;
             string id = args[0];
             
-            // Verificamos si existe en nuestro registro
             if (!MonsterRegistry.IsRegistered(id))
             {
-                Monitor.Log($"Error: El monstruo '{id}' no existe en el registro.", LogLevel.Error);
-                Monitor.Log("Usa 'monster_list' para ver los IDs disponibles.", LogLevel.Info);
+                Monitor.Log($"Monstruo '{id}' no encontrado.", LogLevel.Error);
                 return;
             }
 
-            // Spawnear a 1 casilla del jugador
             Vector2 pos = Game1.player.Position + new Vector2(64, 0); 
-            
-            // Crear la entidad
-            var monster = new CustomMonster(id, pos);
-            
-            // Añadir al mapa actual
-            Game1.currentLocation.characters.Add(monster);
-            
-            Monitor.Log($"¡Éxito! Spawneado {id} en {Game1.currentLocation.Name}.", LogLevel.Info);
+            Game1.currentLocation.characters.Add(new CustomMonster(id, pos));
+            Monitor.Log($"Spawneado {id}.", LogLevel.Info);
         }
 
         private void ListMonsters(string command, string[] args)
         {
-            var ids = MonsterRegistry.GetAllIds();
-            if (!ids.Any())
+            foreach (var id in MonsterRegistry.GetAllIds())
             {
-                Monitor.Log("No hay monstruos registrados actualmente.", LogLevel.Info);
-                return;
-            }
-
-            Monitor.Log("=== Monstruos Registrados ===", LogLevel.Info);
-            foreach (var id in ids)
-            {
-                var monster = MonsterRegistry.Get(id);
-                Monitor.Log($"- ID: {id} | Name: {monster.Data.DisplayName} | Mod: {monster.OwnerMod.Name}", LogLevel.Info);
+                Monitor.Log($"- {id}", LogLevel.Info);
             }
         }
     }

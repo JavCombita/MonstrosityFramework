@@ -10,6 +10,12 @@ namespace MonstrosityFramework.Framework.Data
     {
         // --- Identidad Visual ---
         public string DisplayName { get; set; } = "Unknown Monster";
+		
+		/// <summary>
+        /// [OPCIONAL] Si usas Content Patcher, pon aquí el UniqueID de tu Content Pack.
+        /// Si lo dejas vacío, buscará en la carpeta del mod que registró el monstruo.
+        /// </summary>
+        public string ContentPackID { get; set; } = null;
         
         /// <summary>
         /// Ruta relativa a la carpeta del mod hijo (ej: "assets/sprites/goblin.png").

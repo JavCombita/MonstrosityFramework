@@ -1,0 +1,49 @@
+name: Compile and Package Mod
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 6.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build Core (Release Mode)
+      run: dotnet build MonstrosityFramework.csproj --configuration Release --no-restore /p:EnableModDeploy=false
+
+    - name: Create Release Structure
+      run: |
+        mkdir -p release/MonstrosityFramework"
+
+    - name: Package Core Module
+      run: |
+        # 1. Copiar DLL compilada
+        cp MonstrosityFramework/bin/Release/net6.0/MonstrosityFramework.dll release/MonstrosityFramework/
+        
+        # 2. Copiar Manifest e i18n
+        cp MonstrosityFramework/manifest.json release/MonstrosityFramework/
+        cp -r MonstrosityFramework/i18n release/MonstrosityFramework/
+        
+        # 3. COPIA FORZADA DE ASSETS
+        cp -r MonstrosityFramework/assets release/MonstrosityFramework/
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MonstrosityFramework
+        path: release/
