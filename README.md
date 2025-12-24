@@ -145,13 +145,9 @@ Ancho de Imagen = SpriteWidth x 4 Alto de Imagen = SpriteHeight x 4 Layout de An
 | | Frame 0 | Frame 1 | Frame 2 | Frame 3 |
 |---|---|---|---|---|
 | Fila 0| Abajo | Abajo | Abajo | Abajo | (Caminando hacia la cámara)
-|---|---|---|---|---|
 | Fila 1| Derecha | Derecha | Derecha | Derecha |
-|---|---|---|---|---|
 | Fila 2| Arriba | Arriba | Arriba | Arriba | (De espaldas)
-|---|---|---|---|---|
 | Fila 3| Izq. | Izq. | Izq. | Izq. |
-|---|---|---|---|---|
 
 ---
 
