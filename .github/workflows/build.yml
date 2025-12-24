@@ -24,6 +24,7 @@ jobs:
       run: dotnet restore
 
     - name: Build Core (Release Mode)
+      # Compila el csproj que está en la raíz
       run: dotnet build MonstrosityFramework.csproj --configuration Release --no-restore /p:EnableModDeploy=false
 
     - name: Create Release Structure
@@ -33,25 +34,27 @@ jobs:
     - name: Package Core Module
       run: |
         # 1. Copiar DLL compilada
-        # Nota: La carpeta bin se genera en la raíz del proyecto
+        # CORRECCIÓN: La ruta no lleva prefijo porque estamos en la raíz
         cp bin/Release/net6.0/MonstrosityFramework.dll release/MonstrosityFramework/
         
         # 2. Copiar Manifest
         cp manifest.json release/MonstrosityFramework/
         
-        # 3. Copiar i18n (Solo si existe la carpeta)
+        # 3. Copiar i18n (Solo si existe)
         if [ -d "i18n" ]; then
           cp -r i18n release/MonstrosityFramework/
+          echo "✅ i18n copied."
         else
-          echo "Info: No i18n folder found. Skipping."
+          echo "⚠️ i18n folder not found. Skipping."
         fi
         
-        # 4. Copiar assets (Solo si existe la carpeta)
+        # 4. Copiar assets (Solo si existe)
         if [ -d "assets" ]; then
           cp -r assets release/MonstrosityFramework/
+          echo "✅ assets copied."
         else
-          echo "Warning: No assets folder found. Skipping (This is OK for code-only mods)."
-        fik/
+          echo "⚠️ assets folder not found (Git ignores empty folders). Skipping."
+        fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
