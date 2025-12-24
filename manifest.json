@@ -11,7 +11,7 @@
     {
       "UniqueID": "spacechase0.SpaceCore",
       "IsRequired": false
-    }
+    },
 	{
       "UniqueID": "Pathoschild.ContentPatcher",
       "IsRequired": false
