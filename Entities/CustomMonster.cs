@@ -11,7 +11,7 @@ namespace MonstrosityFramework.Entities
 {
     // CRÍTICO: Este atributo le dice a SpaceCore cómo guardar esta clase en el XML del save.
     // Si cambias este string, rompes los saves de tus usuarios.
-    [XmlType("Mods.Monstrosity.CustomMonster")]
+    [XmlType("Mods_JavCombita_Monstrosity_CustomMonster")] 
     public class CustomMonster : Monster
     {
         // Sincronización Multiplayer: El ID viaja del Host a los Farmhands
