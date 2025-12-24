@@ -220,12 +220,12 @@ Copia este contenido en tu assets/monsters.json para empezar inmediatamente con 
 ```
 
 Referencia Rápida de Items (IDs):
-388: Madera
-336: Lingote de Oro
-337: Lingote de Iridio
-768: Esencia Solar
-769: Esencia del Vacio
-74: Esquirla Prismática
+1. 388: Madera
+2. 336: Lingote de Oro
+3. 337: Lingote de Iridio
+4. 768: Esencia Solar
+5. 769: Esencia del Vacio
+6. 74: Esquirla Prismática
 
 ---
 
