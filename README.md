@@ -16,7 +16,7 @@ El framework se encarga automáticamente de:
 
 1.  [Instalación y Requisitos](#-instalación-y-requisitos)
 2.  [Cómo Crear tu Mod (Paso a Paso)](#-cómo-crear-tu-mod-paso-a-paso)
-3.  [Documentación de monsters.json](#-documentación-de-monstersjson)
+3.  [Documentación de monsters.json](#-documentación-de-monsters.json)
 4.  [Guía de Sprites](#-guía-de-sprites-arte)
 5.  [Kit de Ejemplos (Copiar y Pegar)](#-kit-de-ejemplos-listos-para-usar)
 6.  [Comandos de Debug](#-comandos-de-consola)
@@ -41,12 +41,14 @@ En tu archivo `manifest.json`, debes declarar la dependencia para asegurar que e
       "IsRequired": true
    }
 ]
-´´´
+```
 
 ---
 
 ## 🛠️ Cómo Crear tu Mod (Paso a Paso)
-Para agregar monstruos, crearás un mod estándar de SMAPI que actúa como "puente" para pasarle los datos al Framework.1. Estructura de CarpetasOrganiza tu proyecto exactamente así:
+Para agregar monstruos, crearás un mod estándar de SMAPI que actúa como "puente" para pasarle los datos al Framework.
+
+1. Estructura de CarpetasOrganiza tu proyecto exactamente así:
 
 MyDungeonMod/
 ├── manifest.json           <-- Identidad del mod
@@ -57,7 +59,10 @@ MyDungeonMod/
         ├── goblin.png
         └── ghost.png
 		
-2. El Código Puente (ModEntry.cs)No necesitas programar IA. Solo necesitas este código para registrar tus archivos JSON en el sistema.C#using System;
+2. El Código Puente (ModEntry.cs)No necesitas programar IA. Solo necesitas este código para registrar tus archivos JSON en el sistema.
+
+```C#
+using System;
 using System.Collections.Generic;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -99,7 +104,53 @@ namespace MyDungeonMod
         }
     }
 }
-📜 Documentación de monsters.jsonEste archivo controla todo. Es un diccionario donde la Clave es el ID interno y el Valor son sus propiedades.Tabla de PropiedadesPropiedadTipoDescripciónEjemploDisplayNameStringEl nombre visible del monstruo."Rey Goblin"TexturePathStringRuta a la imagen relativa a tu carpeta de mod."assets/sprites/king.png"SpriteWidthIntAncho de un solo cuadro (frame) en píxeles.16 o 32SpriteHeightIntAlto de un solo cuadro en píxeles.24 o 32MaxHealthIntVida total.150DamageToFarmerIntDaño que hace al tocar al jugador.12BehaviorTypeStringTipo de Inteligencia Artificial (ver abajo)."Stalker"SpawnObjetoReglas de aparición en la mina.Ver ejemploDropsListaLista de objetos que suelta al morir.Ver ejemploTipos de IA (BehaviorType)"Default": Comportamiento estándar (como murciélagos o slimes). Persigue al jugador en línea recta."Stalker": IA Avanzada. Solo se mueve hacia el jugador si este no lo está mirando. Se congela si lo miras."Tank": Movimiento lento, imparable, ignora colisiones menores. Ideal para jefes o golems.🎨 Guía de Sprites (Arte)El sistema usa el formato estándar de Stardew Valley. Tu PNG debe contener 4 filas de animación.La Regla MatemáticaAncho de Imagen = SpriteWidth x 4Alto de Imagen = SpriteHeight x 4Layout de AnimaciónPlaintext       Frame 0   Frame 1   Frame 2   Frame 3
+```
+
+---
+
+### 📜 Documentación de monsters.json
+
+Este archivo controla todo. Es un diccionario donde la Clave es el ID interno y el Valor son sus propiedades.
+
+Tabla de Propiedades.
+
++----------------+----------+------------------------------------------------+---------------------------+
+|  **Propiedad** | **Tipo** |                 **Descripción**                |        **Ejemplo**        |
++----------------+----------+------------------------------------------------+---------------------------+
+|   DisplayName  |  String  |         El nombre visible del monstruo.        |        "Rey Goblin"       |
++----------------+----------+------------------------------------------------+---------------------------+
+|   TexturePath  |  String  | Ruta a la imagen relativa a tu carpeta de mod. | "assets/sprites/king.png" |
++----------------+----------+------------------------------------------------+---------------------------+
+|   SpriteWidth  |    Int   |   Ancho de un solo cuadro (frame) en píxeles.  |          16 o 32          |
++----------------+----------+------------------------------------------------+---------------------------+
+|  SpriteHeight  |    Int   |       Alto de un solo cuadro en píxeles.       |          24 o 32          |
++----------------+----------+------------------------------------------------+---------------------------+
+|    MaxHealth   |    Int   |                   Vida total.                  |            150            |
++----------------+----------+------------------------------------------------+---------------------------+
+| DamageToFarmer |    Int   |       Daño que hace al tocar al jugador.       |             12            |
++----------------+----------+------------------------------------------------+---------------------------+
+|  BehaviorType  |  String  |  Tipo de Inteligencia Artificial (ver abajo).  |         "Stalker"         |
++----------------+----------+------------------------------------------------+---------------------------+
+|      Spawn     |  Objeto  |         Reglas de aparición en la mina.        |        Ver ejemplo        |
++----------------+----------+------------------------------------------------+---------------------------+
+|      Drops     |   Lista  |      Lista de objetos que suelta al morir.     |        Ver ejemplo        |
++----------------+----------+------------------------------------------------+---------------------------+
+
+Tipos de IA (BehaviorType)
+"Default": Comportamiento estándar (como murciélagos o slimes). Persigue al jugador en línea recta.
+"Stalker": IA Avanzada. Solo se mueve hacia el jugador si este no lo está mirando. Se congela si lo miras.
+"Tank": Movimiento lento, imparable, ignora colisiones menores. Ideal para jefes o golems.
+
+---
+
+### 🎨 Guía de Sprites (Arte)
+El sistema usa el formato estándar de Stardew Valley. Tu PNG debe contener 4 filas de animación.
+
+La Regla Matemática:
+
+Ancho de Imagen = SpriteWidth x 4 Alto de Imagen = SpriteHeight x 4 Layout de Animación
+
+        Frame 0   Frame 1   Frame 2   Frame 3
       +---------+---------+---------+---------+
 Fila 0|  Abajo  |  Abajo  |  Abajo  |  Abajo  |  (Caminando hacia la cámara)
       +---------+---------+---------+---------+
@@ -109,7 +160,14 @@ Fila 2| Arriba  | Arriba  | Arriba  | Arriba  |  (De espaldas)
       +---------+---------+---------+---------+
 Fila 3| Izq.    | Izq.    | Izq.    | Izq.    |
       +---------+---------+---------+---------+
-🧪 Kit de Ejemplos (Listos para Usar)Copia este contenido en tu assets/monsters.json para empezar inmediatamente con 3 monstruos funcionales.JSON{
+
+---
+
+### 🧪 Kit de Ejemplos (Listos para Usar)
+Copia este contenido en tu assets/monsters.json para empezar inmediatamente con 3 monstruos funcionales.
+
+```json
+{
   "GoblinGrunt": {
     "DisplayName": "Recluta Goblin",
     "TexturePath": "assets/sprites/goblin_grunt.png",
@@ -171,4 +229,24 @@ Fila 3| Izq.    | Izq.    | Izq.    | Izq.    |
     ]
   }
 }
-Referencia Rápida de Items (IDs)388: Madera336: Lingote de Oro337: Lingote de Iridio768: Esencia Solar769: Esencia Nula74: Esquirla Prismática (Prismatic Shard)🔧 Comandos de ConsolaUsa la consola de SMAPI (la ventana negra que se abre con el juego) para probar tus monstruos sin tener que buscarlos en la mina.monster_listMuestra una lista de todos los monstruos registrados correctamente.monster_spawn <ID_Completo>Hace aparecer un monstruo frente a ti.Nota: El ID completo se forma así: TuModID.NombreDelJSON.Ejemplo: monster_spawn TuNombre.MyDungeonMod.GoblinGrunt
+```
+
+Referencia Rápida de Items (IDs):
+388: Madera
+336: Lingote de Oro
+337: Lingote de Iridio
+768: Esencia Solar
+769: Esencia del Vacio
+74: Esquirla Prismática
+
+---
+
+### 🔧 Comandos de Consola
+Usa la consola de SMAPI (la ventana negra que se abre con el juego) para probar tus monstruos sin tener que buscarlos en la mina.
+
+1. monster_list Muestra una lista de todos los monstruos registrados correctamente.
+2. monster_spawn <ID_Completo> Hace aparecer un monstruo frente a ti.
+
+Nota: El ID completo se forma así: TuModID.NombreDelJSON.
+
+Ejemplo: monster_spawn TuNombre.MyDungeonMod.GoblinGrunt
