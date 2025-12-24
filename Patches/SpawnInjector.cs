@@ -30,6 +30,7 @@ namespace MonstrosityFramework.Patches
         {
             if (e.NewLocation is not MineShaft mine) return;
 
+            // Lógica Anti-Grind: Si ya hay monstruos, reducir spawn drásticamente
             if (CheckAlreadyPopulated(mine))
             {
                 if (Game1.random.NextDouble() > 0.1) return;
@@ -89,6 +90,7 @@ namespace MonstrosityFramework.Patches
                 
                 if (fullId != null)
                 {
+                    // Convertimos coordenadas de Tile a Píxeles para el constructor del monstruo
                     var monster = new CustomMonster(fullId, spawnPos.Value * 64f);
                     mine.characters.Add(monster);
                     _monitor.Log($"[Spawn] {entry.Data.DisplayName} en piso {mine.mineLevel}", LogLevel.Trace);
@@ -102,22 +104,16 @@ namespace MonstrosityFramework.Patches
             {
                 int x = Game1.random.Next(0, mine.Map.Layers[0].LayerWidth);
                 int y = Game1.random.Next(0, mine.Map.Layers[0].LayerHeight);
-                Vector2 pos = new Vector2(x, y); // Coordenada Tile
+                Vector2 tilePos = new Vector2(x, y);
 
-                // CORRECCIONES 1.6:
-                // 1. Reemplazamos 'isTileLocationTotallyClearAndPlaceable' con 'isTileClear' que es más estándar ahora.
-                // 2. Usamos 'Game1.player' en lugar de 'mine.Player'.
-                // 3. Calculamos la distancia manualmente sin 'getTileXAt'.
-                
-                if (mine.isTileClear(pos)) // Verifica colisiones y ocupación básica
+                // CORRECCIÓN MAESTRA 1.6:
+                // Usamos CanSpawnCharacterHere que verifica mapa, colisiones y ocupación en una sola llamada.
+                if (mine.CanSpawnCharacterHere(tilePos))
                 {
-                    // Cálculo manual de distancia en tiles
-                    float playerTileX = Game1.player.Position.X / 64f;
-                    float playerTileY = Game1.player.Position.Y / 64f;
-                    
-                    if (Utility.distance(x, y, playerTileX, playerTileY) > 6)
+                    // Usamos Game1.player.TilePoint para obtener la posición en Tiles del jugador directamente
+                    if (Utility.distance(x, y, Game1.player.TilePoint.X, Game1.player.TilePoint.Y) > 6)
                     {
-                        return pos;
+                        return tilePos;
                     }
                 }
             }
