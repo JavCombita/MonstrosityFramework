@@ -33,14 +33,18 @@ jobs:
     - name: Package Core Module
       run: |
         # 1. Copiar DLL compilada
-        cp MonstrosityFramework/bin/Release/net6.0/MonstrosityFramework.dll release/MonstrosityFramework/
+        # CORRECCIÓN: La carpeta bin se crea en la raíz, no en una subcarpeta
+        cp bin/Release/net6.0/MonstrosityFramework.dll release/MonstrosityFramework/
         
-        # 2. Copiar Manifest e i18n
-        cp MonstrosityFramework/manifest.json release/MonstrosityFramework/
-        cp -r MonstrosityFramework/i18n release/MonstrosityFramework/
+        # 2. Copiar Manifest (Asumiendo que también está en la raíz junto al csproj)
+        cp manifest.json release/MonstrosityFramework/
+        
+        # Solo copiar i18n si existe (para evitar errores si aún no tienes traducciones)
+        if [ -d "i18n" ]; then cp -r i18n release/MonstrosityFramework/; fi
         
         # 3. COPIA FORZADA DE ASSETS
-        cp -r MonstrosityFramework/assets release/MonstrosityFramework/
+        # CORRECCIÓN: assets también suele estar en la raíz
+        cp -r assets release/MonstrosityFramework/
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
