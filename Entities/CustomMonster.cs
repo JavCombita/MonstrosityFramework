@@ -11,15 +11,18 @@ using System.Collections.Generic;
 
 namespace MonstrosityFramework.Entities
 {
-    // IMPORTANTE: Este nombre debe coincidir con el registro interno de SpaceCore.
-    // Usamos guiones bajos para máxima compatibilidad con el serializador.
+    // Este atributo es CRÍTICO para que SpaceCore guarde el monstruo
     [XmlType("Mods_JavCombita_Monstrosity_CustomMonster")] 
     public class CustomMonster : Monster
     {
         public readonly NetString MonsterSourceId = new();
+        
+        // Bandera para saber si ya intentamos cargar los datos al menos una vez
+        private bool _hasLoadedData = false;
 
         public CustomMonster() : base() 
         {
+            // Constructor vacío requerido por Netcode/SaveGame
         }
 
         public CustomMonster(string uniqueId, Vector2 position) : base()
@@ -33,100 +36,115 @@ namespace MonstrosityFramework.Entities
         {
             base.initNetFields();
             this.NetFields.AddField(MonsterSourceId);
-            // Si el ID cambia (ej: sincronización multiplayer), recargamos los datos.
-            this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => ReloadData();
+            
+            // Si el ID cambia en tiempo real (ej: edición en vivo), recargamos
+            this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => 
+            {
+                _hasLoadedData = false; 
+                ReloadData();
+            };
         }
 
         /// <summary>
-        /// Método central que aplica los stats y texturas del Framework al monstruo vanilla.
+        /// Carga las estadísticas y texturas del monstruo desde el registro.
         /// </summary>
         public void ReloadData()
         {
-            if (string.IsNullOrEmpty(MonsterSourceId.Value)) 
-            {
-                // Esto puede pasar durante la inicialización vacía, no es error grave.
-                return;
-            }
+            _hasLoadedData = true; // Marcamos como 'intentado' para evitar bucles infinitos
+
+            if (string.IsNullOrEmpty(MonsterSourceId.Value)) return;
 
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             
-            // 1. VERIFICACIÓN DE DATOS
+            // FALLBACK 1: El ID no existe en el registro (¿Mod borrado?)
             if (entry == null)
             {
-                ModEntry.StaticMonitor.Log($"[CustomMonster] CRÍTICO: El monstruo '{MonsterSourceId.Value}' no existe en el Registry. Usando valores por defecto.", LogLevel.Error);
-                this.Name = "Unknown Monster";
-                // Fallback visual para evitar invisibilidad
-                this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
+                // Asignamos una textura de emergencia para que drawDebris NO crashee
+                EnsureFallbackTexture();
                 return;
             }
 
-            // 2. APLICAR STATS
+            // 1. Aplicar Estadísticas
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
             this.Health = this.MaxHealth;
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             
-            // Inicializar Sprite con dimensiones correctas pero sin textura aún
+            // 2. Configurar Sprite
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             
-            // 3. CARGA DE TEXTURA (EL AIRBAG ANTI-CRASH)
+            // 3. Cargar Textura con Seguridad
             try
             {
                 Texture2D customTex = entry.GetTexture();
-                
                 if (customTex != null)
                 {
                     this.Sprite.spriteTexture = customTex;
-                    ModEntry.StaticMonitor.Log($"[CustomMonster] Textura cargada OK para {this.Name} ({customTex.Width}x{customTex.Height})", LogLevel.Trace);
                 }
                 else
                 {
-                    // --- PROTOCOLO DE EMERGENCIA ---
-                    ModEntry.StaticMonitor.Log($"[CustomMonster] PELIGRO: La textura para '{this.Name}' es NULL. Activando textura de respaldo (Shadow Brute) para evitar crash.", LogLevel.Alert);
-                    
-                    // Cargamos una textura vainilla segura. 
-                    // Esto evita el crash en 'shedChunks' cuando golpeas al monstruo.
-                    this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute");
+                    // FALLBACK 2: La imagen del mod falló al cargar
+                    EnsureFallbackTexture();
                 }
             }
             catch (Exception ex)
             {
-                ModEntry.StaticMonitor.Log($"[CustomMonster] Excepción fatal asignando textura: {ex.Message}", LogLevel.Error);
+                ModEntry.StaticMonitor.Log($"[CustomMonster] Error fatal textura: {ex.Message}", LogLevel.Error);
+                EnsureFallbackTexture();
             }
             
             this.HideShadow = false;
         }
 
-        public override void behaviorAtGameTick(GameTime time)
-		{
-			// FIX: Protección contra NullReferenceException si la textura falló catastróficamente
-			if (this.Sprite?.spriteTexture == null || this.MonsterSourceId.Value == null) 
-			{
-				return; 
-			}
+        /// <summary>
+        /// Asigna la textura del Shadow Brute si no tenemos nada más.
+        /// Vital para evitar NullReferenceException en GameLocation.drawDebris.
+        /// </summary>
+        private void EnsureFallbackTexture()
+        {
+            if (this.Sprite == null) 
+                this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
+                
+            if (this.Sprite.spriteTexture == null)
+                this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute");
+        }
 
-            // Lógica Vanilla: Solo actuar si el jugador está cerca
+        public override void behaviorAtGameTick(GameTime time)
+        {
+            // --- AUTO-CORRECCIÓN (LAZY LOADING) ---
+            // Al cargar partida, el constructor vacío NO llama a ReloadData.
+            // Lo detectamos aquí en el primer frame de lógica.
+            if (!_hasLoadedData || this.Sprite?.spriteTexture == null)
+            {
+                if (!string.IsNullOrEmpty(MonsterSourceId.Value))
+                {
+                    ReloadData();
+                }
+                
+                // Si tras recargar sigue sin textura, abortamos para no causar daño invisible.
+                if (this.Sprite?.spriteTexture == null) return;
+            }
+
+            // Lógica Vanilla de visión
             if (!withinPlayerThreshold(16)) return;
 
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             string behavior = entry?.Data.BehaviorType ?? "Default";
 
+            // IA Simple
             switch (behavior)
             {
                 case "Stalker":
-                    // Si el jugador no me mira, me muevo rápido hacia él
                     if (!IsPlayerLookingAtMe()) MoveTowardPlayer(3);
-                    else MoveTowardPlayer(1); // Si me mira, me muevo lento (o podrías hacer que se detenga)
+                    else MoveTowardPlayer(1); 
                     break;
                     
                 case "Tank": 
-                    // Lento pero constante
                     MoveTowardPlayer(1); 
                     break;
 
                 case "Rusher":
-                    // Muy rápido
                     MoveTowardPlayer(4);
                     break;
 
@@ -136,8 +154,6 @@ namespace MonstrosityFramework.Entities
                     break;
             }
         }
-
-        // --- MÉTODOS AUXILIARES ---
 
         private void MoveTowardPlayer(int speed)
         {
@@ -151,18 +167,16 @@ namespace MonstrosityFramework.Entities
             int faceDir = this.Player.FacingDirection; 
             
             if (Math.Abs(toMonster.X) > Math.Abs(toMonster.Y))
-            {
                 return (toMonster.X > 0 && faceDir == 1) || (toMonster.X < 0 && faceDir == 3);
-            }
             else
-            {
                 return (toMonster.Y > 0 && faceDir == 2) || (toMonster.Y < 0 && faceDir == 0);
-            }
         }
         
         public override List<Item> getExtraDropItems()
         {
             var drops = new List<Item>();
+            if (string.IsNullOrEmpty(MonsterSourceId.Value)) return drops;
+
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             
             if (entry != null && entry.Data.Drops != null)
@@ -171,6 +185,7 @@ namespace MonstrosityFramework.Entities
                 {
                     if (Game1.random.NextDouble() <= dropData.Chance)
                     {
+                        // ItemRegistry.Create es la forma moderna en 1.6 de crear items
                         Item item = ItemRegistry.Create(dropData.ItemId, 1);
                         drops.Add(item);
                     }
