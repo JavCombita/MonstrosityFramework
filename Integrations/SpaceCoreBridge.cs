@@ -1,30 +1,48 @@
 using StardewModdingAPI;
-using SpaceCore;
 using MonstrosityFramework.Entities;
+using System;
+using System.Reflection;
 
 namespace MonstrosityFramework.Integrations
 {
     public static class SpaceCoreBridge
     {
+        private const string SpaceCoreId = "spacechase0.SpaceCore";
+
         public static bool Init(IModHelper helper, IMonitor monitor)
         {
-            if (!helper.ModRegistry.IsLoaded("spacechase0.SpaceCore"))
-                return false;
-
-            // REFLECTION SAFE: Usamos la API de SpaceCore para registrar la clase
-            var spaceCoreApi = helper.ModRegistry.GetApi<ISpaceCoreApi>("spacechase0.SpaceCore");
-            if (spaceCoreApi != null)
+            // Verificamos si SpaceCore está cargado
+            if (!helper.ModRegistry.IsLoaded(SpaceCoreId))
             {
-                // Esto permite que el juego guarde "Mods_JavCombita_Monstrosity_CustomMonster" en el XML
-                spaceCoreApi.RegisterSerializerType(typeof(CustomMonster));
-                monitor.Log("SpaceCore API enganchada: CustomMonster registrado para serialización.", LogLevel.Info);
-                return true;
+                monitor.Log("SpaceCore no encontrado. Los monstruos no se serializarán.", LogLevel.Warn);
+                return false;
             }
+
+            try
+            {
+                // TRUCO DE REFLECTION: Obtenemos la API usando nuestra interfaz local 'ISpaceCoreApi'
+                // Esto engaña al compilador para que no pida "using SpaceCore;"
+                var api = helper.ModRegistry.GetApi<ISpaceCoreApi>(SpaceCoreId);
+
+                if (api != null)
+                {
+                    api.RegisterSerializerType(typeof(CustomMonster));
+                    monitor.Log("SpaceCore conectado exitosamente.", LogLevel.Info);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                monitor.Log($"Error conectando con SpaceCore: {ex.Message}", LogLevel.Error);
+            }
+
             return false;
         }
     }
 
-    // Interfaz dummy para Reflection si no quieres compilar contra la DLL directamente (opcional pero recomendado)
+    // --- INTERFAZ FANTASMA ---
+    // Copiamos la firma del método que necesitamos de SpaceCore.
+    // Como está definida AQUÍ, no necesitamos 'using SpaceCore'.
     public interface ISpaceCoreApi
     {
         void RegisterSerializerType(Type type);

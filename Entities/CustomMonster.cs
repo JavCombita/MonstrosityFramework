@@ -150,27 +150,16 @@ namespace MonstrosityFramework.Entities
             Vector2 toMonster = this.Position - this.Player.Position;
             int faceDir = this.Player.FacingDirection; 
             
-            // Lógica simple para determinar si el jugador encara al monstruo
             if (Math.Abs(toMonster.X) > Math.Abs(toMonster.Y))
             {
-                // Eje horizontal
                 return (toMonster.X > 0 && faceDir == 1) || (toMonster.X < 0 && faceDir == 3);
             }
             else
             {
-                // Eje vertical
                 return (toMonster.Y > 0 && faceDir == 2) || (toMonster.Y < 0 && faceDir == 0);
             }
         }
         
-		public override int GetBaseDamageToFarmer()
-		{
-			// Es mejor sobreescribir esto que asignar DamageToFarmer manualmente,
-			// ya que Stardew calcula buffs/debuffs sobre este valor.
-			var entry = MonsterRegistry.Get(MonsterSourceId.Value);
-			return entry?.Data.DamageToFarmer ?? base.GetBaseDamageToFarmer();
-		}
-		
         public override List<Item> getExtraDropItems()
         {
             var drops = new List<Item>();
@@ -182,7 +171,6 @@ namespace MonstrosityFramework.Entities
                 {
                     if (Game1.random.NextDouble() <= dropData.Chance)
                     {
-                        // ItemRegistry.Create es el método seguro en 1.6
                         Item item = ItemRegistry.Create(dropData.ItemId, 1);
                         drops.Add(item);
                     }
