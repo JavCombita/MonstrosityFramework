@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using HarmonyLib;
 using MonstrosityFramework.API;
 using MonstrosityFramework.Framework;
 using MonstrosityFramework.Framework.Registries;
