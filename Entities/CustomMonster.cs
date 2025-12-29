@@ -105,19 +105,17 @@ namespace MonstrosityFramework.Entities
         {
             if (_cachedBehavior == "bat" || _cachedBehavior == "ghost") _runAwayTimer = 1000f;
 
-            // --- CORRECCIÓN CRÍTICA CANGREJO ---
-            // Si es cangrejo y está dormido
+            // IA CANGREJO: Despertar al recibir daño
             if (_cachedBehavior == "rockcrab" && _aiState == 0)
             {
                 Game1.playSound("hitRock");
-                
-                // Forzamos el despertar INMEDIATO
                 _aiState = 1;       
                 _stateTimer = 500f; 
-                this.Sprite.currentFrame = 1; // Primer frame de despertar
-                this.Sprite.StopAnimation();  // IMPORTANTE: Congelar animación para que se vea
                 
-                return 0; // Bloquea daño (Invulnerable en estado roca)
+                // Orientar hacia el agresor para usar el frame correcto
+                this.faceGeneralDirection(who.Position);
+                
+                return 0; // Caparazón duro
             }
 
             if (_cachedBehavior == "mummy")
@@ -137,7 +135,7 @@ namespace MonstrosityFramework.Entities
                         _reviveTimer = 10000f; 
                         Game1.playSound("rockGolemHit");
                         this.Sprite.currentFrame = 4; 
-                        this.Sprite.StopAnimation(); // Congelar momia en el suelo
+                        this.Sprite.StopAnimation(); 
                         return 0; 
                     }
                 }
@@ -195,54 +193,65 @@ namespace MonstrosityFramework.Entities
 
         private void BehaviorRockCrab(GameTime time, int speed)
         {
-            if (_aiState == 0) // ESTADO: ROCA (Dormido)
+            // Calcular frame base según dirección (0, 4, 8, 12)
+            // Stardew: 0=Abajo, 1=Derecha, 2=Arriba, 3=Izquierda
+            int baseFrame = this.FacingDirection * 4;
+
+            if (_aiState == 0) // ROCA (Oculto)
             {
-                this.DamageToFarmer = 0;
-                this.Sprite.currentFrame = 0; // Frame Roca
-                this.Sprite.StopAnimation(); // <--- FIX: Evita que el juego lo ponga en frame idle
+                this.DamageToFarmer = 0; // Inofensivo mientras duerme
+                this.Sprite.currentFrame = baseFrame; // Frame de roca direccional (0, 4, 8, 12)
+                this.Sprite.StopAnimation(); // Congelar
                 this.HideShadow = true; 
                 this.IsWalkingTowardPlayer = false;
 
-                // Detección (aumentada a 3 casillas aprox)
                 float distance = Vector2.Distance(this.GetBoundingBox().Center.ToVector2(), this.Player.GetBoundingBox().Center.ToVector2());
 
-                if (distance < 200f) 
+                if (distance < 192f) 
                 {
                     _aiState = 1; // Despertar
-                    _stateTimer = 600f; // Tiempo de animación (0.6s)
+                    _stateTimer = 500f;
                     Game1.playSound("stoneCrack");
+                    this.faceGeneralDirection(this.Player.Position); // Mirar al jugador al despertar
                     this.shake(Game1.random.Next(2, 4));
                 }
             }
-            else if (_aiState == 1) // ESTADO: LEVANTÁNDOSE (Animación)
+            else if (_aiState == 1) // LEVANTÁNDOSE
             {
+                this.DamageToFarmer = 0; // Aún inofensivo
                 this.HideShadow = false; 
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 
-                // Simulación de animación simple
-                if (_stateTimer > 300) this.Sprite.currentFrame = 0; // Roca
-                else this.Sprite.currentFrame = 1; // Patas afuera
-                
-                this.Sprite.StopAnimation(); // <--- FIX: Mantenemos el control manual
+                // Usamos el frame "1" relativo a la dirección (1, 5, 9, 13)
+                // que suele ser el inicio del movimiento.
+                this.Sprite.currentFrame = baseFrame + 1;
+                this.Sprite.StopAnimation();
                 
                 if (_stateTimer <= 0) { 
-                    _aiState = 2; // Listo para pelear
+                    _aiState = 2; // ATAQUE
                 }
             }
-            else // ESTADO: PERSECUCIÓN
+            else // PERSECUCIÓN
             {
+                // FIX: Restaurar daño si es 0
+                if (this.DamageToFarmer == 0)
+                {
+                    var entry = MonsterRegistry.Get(MonsterSourceId.Value);
+                    this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
+                }
+
                 this.HideShadow = false;
                 
-                // Distancia para volver a esconderse (6 casillas)
                 float distance = Vector2.Distance(this.GetBoundingBox().Center.ToVector2(), this.Player.GetBoundingBox().Center.ToVector2());
-                if (distance > 400f) { 
+                if (distance > 384f) { 
                     _aiState = 0; 
                     return; 
                 }
                 
                 this.IsWalkingTowardPlayer = true;
                 
-                // Aquí SÍ permitimos que el juego anime el caminar
+                // Dejamos que el motor base anime el caminar (frames 1-3, 5-7, etc)
+                // Esto usa baseFrame + 1, +2, +3 automáticamente
                 base.moveTowardPlayer(speed);
             }
         }
@@ -326,7 +335,6 @@ namespace MonstrosityFramework.Entities
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 this.shake(Game1.random.Next(1, 3)); 
                 
-                // FIX: Forzar frame de carga y parar animación
                 this.Sprite.currentFrame = 0; 
                 this.Sprite.StopAnimation();
 
@@ -455,7 +463,7 @@ namespace MonstrosityFramework.Entities
                 this.isGlider.Value = false;
                 _isInvincibleOverride = true;
                 this.Sprite.currentFrame = 4;
-                this.Sprite.StopAnimation(); // FIX: Asegurar que se vea tirada
+                this.Sprite.StopAnimation();
                 
                 _reviveTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (_reviveTimer <= 0)
