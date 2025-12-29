@@ -64,7 +64,7 @@ namespace MonstrosityFramework.Entities
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             
-            // Asignar defensa al campo nativo 'resilience'
+            // FIX: Asignar defensa al campo nativo 'resilience' (Defense property no existe)
             this.resilience.Value = entry.Data.Defense;
 
             string behavior = entry.Data.BehaviorType ?? "Default";
@@ -133,7 +133,7 @@ namespace MonstrosityFramework.Entities
                 }
                 else
                 {
-                    // FIX: Usamos this.resilience.Value en lugar de this.Defense
+                    // FIX: Usamos resilience.Value
                     int actualDamage = Math.Max(1, damage - this.resilience.Value);
                     if (this.Health - actualDamage <= 0)
                     {
@@ -232,24 +232,25 @@ namespace MonstrosityFramework.Entities
                 {
                     Vector2 shotVelocity = Utility.getVelocityTowardPlayer(new Point((int)Position.X, (int)Position.Y), 10f, this.Player);
 
-                    // FIX: Argumentos corregidos para el constructor de BasicProjectile (Vector2 en lugar de int para position)
+                    // FIX CRÍTICO: Constructor de BasicProjectile alineado con la API 1.6
                     Game1.currentLocation.projectiles.Add(new BasicProjectile(
-                        this.DamageToFarmer,           
-                        BasicProjectile.shadowBall,    
-                        0,                             
-                        0,                             
-                        0f,                            
-                        shotVelocity.X,                
-                        shotVelocity.Y,                
-                        this.Position, // FIX: Pasar this.Position (Vector2), no 0 (int)
-                        "flameSpell_hit",              
-                        "flameSpell",                  
-                        false,                         
-                        false,                         
-                        Game1.currentLocation,         
-                        this,                          
-                        false,                         
-                        null                           
+                        this.DamageToFarmer,           // 1. Damage
+                        BasicProjectile.shadowBall,    // 2. Index
+                        0,                             // 3. Loops
+                        0,                             // 4. Tiles
+                        0f,                            // 5. Rotation Vel
+                        shotVelocity.X,                // 6. X Vel
+                        shotVelocity.Y,                // 7. Y Vel
+                        this.Position,                 // 8. Start Pos (FIX: Vector2, no int)
+                        "flameSpell_hit",              // 9. Sound Hit
+                        "flameSpell",                  // 10. Sound Fire
+                        null,                          // 11. Debuff ID (FIX: Nuevo parámetro string)
+                        false,                         // 12. Explode
+                        false,                         // 13. Damage Monsters
+                        Game1.currentLocation,         // 14. Location
+                        this,                          // 15. Shooter
+                        false,                         // 16. Sprite from obj
+                        null                           // 17. Collision Behavior
                     ));
                     _fireCooldown = 3000f; 
                 }
