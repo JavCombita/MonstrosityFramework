@@ -38,6 +38,14 @@ namespace MonstrosityFramework
             helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo por ID.", SpawnDebugMonster);
             helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos.", ListMonsters);
             helper.ConsoleCommands.Add("monster_reload", "Recarga JSONs y texturas.", ReloadMonstersCommand);
+			
+			// INICIALIZAR HARMONY
+			var harmony = new Harmony(this.ModManifest.UniqueID);
+    
+			// Aplicar todos los parches (incluyendo el DebrisSafetyPatch)
+			harmony.PatchAll(); 
+    
+			Monitor.Log("Escudo de Estabilidad (Harmony) activado.", LogLevel.Info);
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
