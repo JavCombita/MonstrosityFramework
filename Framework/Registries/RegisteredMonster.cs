@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using MonstrosityFramework.Framework.Data;
 using System;
+using System.IO; // Necesario para Path y FileStream
 using StardewValley;
 
 namespace MonstrosityFramework.Framework.Registries
@@ -9,19 +10,12 @@ namespace MonstrosityFramework.Framework.Registries
     public class RegisteredMonster : IDisposable
     {
         public MonsterData Data { get; }
-        
-        // Propiedad pública para saber de dónde vino (útil para debug)
         public IContentPack SourcePack { get; }
-        
-        // El manifest del mod que lo creó (sea un pack o el framework mismo)
         public IManifest OwnerManifest { get; }
 
         private Texture2D _textureCache;
         private bool _hasTriedLoading = false;
 
-        /// <summary>
-        /// Constructor para el sistema moderno de Content Packs.
-        /// </summary>
         public RegisteredMonster(IContentPack pack, MonsterData data)
         {
             SourcePack = pack;
@@ -29,9 +23,6 @@ namespace MonstrosityFramework.Framework.Registries
             Data = data;
         }
 
-        /// <summary>
-        /// Constructor legacy/fallback para Content Patcher o inyecciones directas.
-        /// </summary>
         public RegisteredMonster(IManifest owner, MonsterData data)
         {
             SourcePack = null;
@@ -41,44 +32,48 @@ namespace MonstrosityFramework.Framework.Registries
 
         public Texture2D GetTexture()
         {
-            // 1. Cache hit
             if (_textureCache != null && !_textureCache.IsDisposed) return _textureCache;
-            
-            // Si ya intentamos cargar y falló, no spammeamos logs de error, devolvemos null y dejamos que CustomMonster use el fallback.
             if (_hasTriedLoading) return null; 
 
             _hasTriedLoading = true;
 
             try
             {
-                // CASO A: Viene de un Content Pack (Sistema Nuevo)
+                // CASO A: Content Pack (Carga física segura)
                 if (SourcePack != null)
                 {
-                    // LoadAsset maneja automáticamente rutas relativas y extensiones.
-                    // Data.TexturePath debe ser relativo a la carpeta del pack (ej: "assets/sprites/ghost.png")
-                    ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' desde pack '{SourcePack.Manifest.Name}'", LogLevel.Trace);
-                    _textureCache = SourcePack.LoadAsset<Texture2D>(Data.TexturePath);
+                    // Construimos la ruta completa física
+                    string fullPath = Path.Combine(SourcePack.DirectoryPath, Data.TexturePath);
+                    
+                    if (File.Exists(fullPath))
+                    {
+                        ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' desde '{SourcePack.Manifest.Name}'", LogLevel.Trace);
+                        
+                        // Usamos FileStream para leer el PNG y convertirlo a Texture2D
+                        using (FileStream stream = new FileStream(fullPath, FileMode.Open))
+                        {
+                            _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
+                            _textureCache.Name = $"{OwnerManifest.UniqueID}/{Data.TexturePath}";
+                        }
+                    }
+                    else
+                    {
+                        ModEntry.StaticMonitor.Log($"[Texture] Archivo no encontrado: {fullPath}", LogLevel.Error);
+                    }
                 }
-                // CASO B: Sistema Legacy (Content Patcher o XNB Vanilla)
+                // CASO B: Legacy / Vanilla (Carga vía Pipeline)
                 else
                 {
-                    // Asumimos que es un asset del juego o una ruta virtual de CP
-                    ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' via Game Content Pipeline", LogLevel.Trace);
+                    ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' via Game Content", LogLevel.Trace);
                     _textureCache = Game1.content.Load<Texture2D>(Data.TexturePath);
-                }
-
-                if (_textureCache != null)
-                {
-                    // Ponerle nombre ayuda al debug visual
-                    _textureCache.Name = $"{OwnerManifest.UniqueID}/{Data.TexturePath}";
                 }
 
                 return _textureCache;
             }
             catch (Exception ex)
             {
-                ModEntry.StaticMonitor.Log($"[Texture] Error CRÍTICO cargando textura '{Data.TexturePath}' para '{Data.DisplayName}': {ex.Message}", LogLevel.Error);
-                return null; // CustomMonster manejará esto poniéndole sprite de Shadow Brute
+                ModEntry.StaticMonitor.Log($"[Texture] Error cargando textura '{Data.TexturePath}': {ex.Message}", LogLevel.Error);
+                return null;
             }
         }
 
