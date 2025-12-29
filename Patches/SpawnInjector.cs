@@ -28,7 +28,9 @@ namespace MonstrosityFramework.Patches
 
         private void OnPlayerWarped(object sender, WarpedEventArgs e)
         {
-            if (e.NewLocation is not MineShaft mine) return;
+            if (!Context.IsMainPlayer) return;
+			
+			if (e.NewLocation is not MineShaft mine) return;
 
             // Lógica Anti-Grind: Si ya hay monstruos, reducir spawn drásticamente
             if (CheckAlreadyPopulated(mine))

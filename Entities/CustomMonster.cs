@@ -99,9 +99,12 @@ namespace MonstrosityFramework.Entities
         }
 
         public override void behaviorAtGameTick(GameTime time)
-        {
-            // Protección: Si por alguna razón el sprite es null, no ejecutar lógica para evitar más errores.
-            if (this.Sprite?.spriteTexture == null) return;
+		{
+			// FIX: Protección contra NullReferenceException si la textura falló catastróficamente
+			if (this.Sprite?.spriteTexture == null || this.MonsterSourceId.Value == null) 
+			{
+				return; 
+			}
 
             // Lógica Vanilla: Solo actuar si el jugador está cerca
             if (!withinPlayerThreshold(16)) return;
@@ -160,6 +163,14 @@ namespace MonstrosityFramework.Entities
             }
         }
         
+		public override int GetBaseDamageToFarmer()
+		{
+			// Es mejor sobreescribir esto que asignar DamageToFarmer manualmente,
+			// ya que Stardew calcula buffs/debuffs sobre este valor.
+			var entry = MonsterRegistry.Get(MonsterSourceId.Value);
+			return entry?.Data.DamageToFarmer ?? base.GetBaseDamageToFarmer();
+		}
+		
         public override List<Item> getExtraDropItems()
         {
             var drops = new List<Item>();

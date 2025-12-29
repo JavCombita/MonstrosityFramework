@@ -1,4 +1,7 @@
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
+using StardewValley;
+using StardewValley.Monsters;
 using MonstrosityFramework.Framework.Data;
 
 namespace MonstrosityFramework.API
@@ -6,23 +9,27 @@ namespace MonstrosityFramework.API
     public interface IMonstrosityApi
     {
         /// <summary>
-        /// Registra un nuevo monstruo en el sistema.
-        /// Debe llamarse durante el evento GameLaunched o después.
+        /// Registra un monstruo manualmente (Legacy / C# directo).
         /// </summary>
-        /// <param name="mod">El manifiesto del mod que añade el monstruo (usar this.ModManifest).</param>
-        /// <param name="localId">ID local del monstruo (ej: "VoidGoblin").</param>
-        /// <param name="data">El objeto de configuración cargado desde el JSON.</param>
-        void RegisterMonster(IManifest mod, string localId, MonsterData data);
+        void RegisterMonster(IManifest ownerMod, string id, MonsterData data);
+
+        /// <summary>
+        /// Registra un monstruo desde un Content Pack (Recomendado).
+        /// </summary>
+        void RegisterMonsterFromPack(IContentPack pack, string localId, MonsterData data);
 
         /// <summary>
         /// Obtiene los datos de un monstruo registrado.
         /// </summary>
-        /// <param name="uniqueId">El ID único global (ej: "AuthorName.ModName.VoidGoblin").</param>
-        MonsterData GetMonsterData(string uniqueId);
+        MonsterData GetMonsterData(string id);
 
         /// <summary>
-        /// Verifica si un ID de monstruo existe en el registro.
+        /// Spawnea un monstruo en el mundo de forma segura.
+        /// Devuelve la instancia del monstruo (como NPC) o null si falló.
         /// </summary>
-        bool IsMonsterRegistered(string uniqueId);
+        /// <param name="id">ID del monstruo (ej: "Author.Mod.Monster")</param>
+        /// <param name="location">Mapa donde aparecerá</param>
+        /// <param name="tile">Coordenadas en Tiles (x, y)</param>
+        Monster SpawnMonster(string id, GameLocation location, Vector2 tile);
     }
 }
