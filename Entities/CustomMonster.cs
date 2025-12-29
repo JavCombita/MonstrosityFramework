@@ -20,19 +20,21 @@ namespace MonstrosityFramework.Entities
         // --- VARIABLES DE ESTADO INTERNO ---
         private bool _hasLoadedData = false;
         
-        // Control genérico de estados (usado por todas las IAs)
+        // Control genérico de estados
         private float _stateTimer = 0f;
         private int _aiState = 0; 
+        
+        // Control de invulnerabilidad personalizado (para Duggies)
+        private bool _isInvincibleOverride = false;
         
         // IA Tirador
         private float _fireCooldown = 0f;
         
         // IA Fantasma/Volador
-        private bool _wasHitRecently = false;
         private float _runAwayTimer = 0f;
 
         // IA Serpiente
-        private Vector2 _velocity = Vector2.Zero;
+        // (No usamos variables extra aquí, usamos velocity directa)
 
         public CustomMonster() : base() 
         {
@@ -53,6 +55,12 @@ namespace MonstrosityFramework.Entities
             this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => { _hasLoadedData = false; ReloadData(); };
         }
 
+        // SOBREESCRIBIMOS EL MÉTODO DE INVULNERABILIDAD
+        public override bool isInvincible()
+        {
+            return _isInvincibleOverride || base.isInvincible();
+        }
+
         public void ReloadData()
         {
             _hasLoadedData = true;
@@ -71,13 +79,14 @@ namespace MonstrosityFramework.Entities
             string behavior = entry.Data.BehaviorType ?? "Default";
             
             // Configurar si atraviesa paredes
-            if (behavior == "Bat" || behavior == "Ghost" || behavior == "Serpent" || behavior == "Slime") // Slime salta obstáculos
+            // FIX: Usamos isGlider.Value (NetBool) en lugar de IsGlider
+            if (behavior == "Bat" || behavior == "Ghost" || behavior == "Serpent" || behavior == "Slime") 
             {
-                this.IsGlider = true;
+                this.isGlider.Value = true;
             }
             else
             {
-                this.IsGlider = false;
+                this.isGlider.Value = false;
             }
 
             // Sprite
@@ -120,7 +129,7 @@ namespace MonstrosityFramework.Entities
 
             switch (behavior)
             {
-                case "Slime":       BehaviorSlime(time, speed); break; // <--- ¡NUEVO!
+                case "Slime":       BehaviorSlime(time, speed); break;
                 case "Bat":         BehaviorBat(time, speed); break;
                 case "Ghost":       BehaviorGhost(time, speed); break;
                 case "Shooter":     BehaviorShooter(time, speed); break;
@@ -138,16 +147,10 @@ namespace MonstrosityFramework.Entities
         // ============================================================================================
         private void BehaviorSlime(GameTime time, int speed)
         {
-            // _aiState: 
-            // 0 = Idle/Caminando (Cooldown)
-            // 1 = Cargando Salto (Winding up)
-            // 2 = Saltando (En el aire/Lunge)
-
-            if (_aiState == 0) // --- FASE IDLE ---
+            if (_aiState == 0) // IDLE
             {
-                this.IsGlider = false; // En el suelo respeta colisiones
+                this.isGlider.Value = false; // Suelo
                 
-                // Moverse muy lentamente o aleatoriamente
                 if (withinPlayerThreshold(12))
                 {
                     if (_stateTimer > 0)
@@ -156,92 +159,77 @@ namespace MonstrosityFramework.Entities
                     }
                     else
                     {
-                        // Intentar iniciar un salto (Probabilidad aleatoria para no ser un robot)
                         if (Game1.random.NextDouble() < 0.02) 
                         {
-                            _aiState = 1; // Pasamos a cargar
-                            _stateTimer = 600f; // Tiempo de carga (0.6 segundos)
-                            Game1.playSound("slimeHit"); // Sonido de "squish" preparándose
-                            this.Halt(); // Se detiene para cargar
+                            _aiState = 1; // Cargar
+                            _stateTimer = 600f;
+                            Game1.playSound("slimeHit");
+                            this.Halt();
                         }
                         else
                         {
-                            // Pequeños pasos erráticos hacia el jugador
                             base.moveTowardPlayer(1);
                         }
                     }
                 }
             }
-            else if (_aiState == 1) // --- FASE DE CARGA (WIND UP) ---
+            else if (_aiState == 1) // CARGANDO
             {
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                
-                // Efecto visual: Vibrar para indicar peligro
                 this.shake(Game1.random.Next(1, 3)); 
 
                 if (_stateTimer <= 0)
                 {
-                    // ¡LANZAMIENTO!
-                    _aiState = 2;
-                    _stateTimer = 500f; // Duración máxima del impulso
+                    _aiState = 2; // SALTAR
+                    _stateTimer = 500f;
                     
-                    // Calculamos vector hacia el jugador
-                    Vector2 target = this.Player.Position;
-                    // Velocidad explosiva (speed * 4)
                     Vector2 velocity = Utility.getVelocityTowardPlayer(new Point((int)this.Position.X, (int)this.Position.Y), speed * 4f, this.Player);
-                    
                     this.xVelocity = velocity.X;
                     this.yVelocity = velocity.Y;
                     
-                    this.IsGlider = true; // Ignora colisiones pequeñas y agua al saltar
+                    this.isGlider.Value = true; // Aire
                     Game1.playSound("slimeJump");
                 }
             }
-            else if (_aiState == 2) // --- FASE DE SALTO (LUNGE) ---
+            else if (_aiState == 2) // EN AIRE
             {
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
 
-                // Aplicar movimiento físico manual (ignorando pathfinding)
-                this.Position.X += this.xVelocity;
-                this.Position.Y += this.yVelocity;
+                // FIX: Modificar posición creando nuevo Vector2 (CS1612)
+                this.Position += new Vector2(this.xVelocity, this.yVelocity);
 
-                // Fricción (Air Drag): Reducir velocidad gradualmente
                 if (_stateTimer < 250) 
                 {
                     this.xVelocity *= 0.90f;
                     this.yVelocity *= 0.90f;
                 }
 
-                // Detectar colisión con jugador manualmente para asegurar daño
                 if (this.GetBoundingBox().Intersects(this.Player.GetBoundingBox()))
                 {
-                    // El daño base lo maneja el juego, pero podemos forzar el fin del salto
-                    this.xVelocity = -this.xVelocity * 0.5f; // Rebote
+                    this.xVelocity = -this.xVelocity * 0.5f;
                     this.yVelocity = -this.yVelocity * 0.5f;
                     _aiState = 0;
-                    _stateTimer = 1000f; // Cooldown post-golpe
+                    _stateTimer = 1000f;
                 }
 
-                // Fin del salto por tiempo o si casi se detuvo
                 if (_stateTimer <= 0 || (Math.Abs(xVelocity) < 0.5f && Math.Abs(yVelocity) < 0.5f))
                 {
-                    _aiState = 0; // Aterrizar
-                    _stateTimer = Game1.random.Next(1000, 2000); // Cooldown aleatorio entre saltos (1-2s)
+                    _aiState = 0;
+                    _stateTimer = Game1.random.Next(1000, 2000);
                 }
             }
 
-            // Animación (Opcional: puedes definir frames específicos en tu JSON si quieres)
-            // Slime vanilla usa frames específicos, pero para custom monsters usamos Animate genérico
-            if (_aiState == 1) this.Sprite.currentFrame = 0; // Agachado
+            if (_aiState == 1) this.Sprite.currentFrame = 0;
             else this.Sprite.Animate(time, 0, 4, 100f);
         }
 
         // ============================================================================================
-        // 🦇 IA VOLADORA (MURCIÉLAGOS)
+        // 🦇 IA VOLADORA
         // ============================================================================================
         private void BehaviorBat(GameTime time, int speed)
         {
-            this.IsGlider = true;
+            this.isGlider.Value = true; // FIX: CS1061
+
             if (_runAwayTimer > 0)
             {
                 _runAwayTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
@@ -268,7 +256,7 @@ namespace MonstrosityFramework.Entities
         // ============================================================================================
         private void BehaviorGhost(GameTime time, int speed)
         {
-            this.IsGlider = true;
+            this.isGlider.Value = true;
             if (withinPlayerThreshold(20))
             {
                 Vector2 trajectory = this.Player.Position - this.Position;
@@ -289,7 +277,7 @@ namespace MonstrosityFramework.Entities
         // ============================================================================================
         private void BehaviorSerpent(GameTime time, int speed)
         {
-            this.IsGlider = true;
+            this.isGlider.Value = true;
             if (withinPlayerThreshold(20))
             {
                 Vector2 target = this.Player.Position;
@@ -298,7 +286,9 @@ namespace MonstrosityFramework.Entities
                 float sineWave = (float)Math.Sin(time.TotalGameTime.TotalMilliseconds / 100.0) * 2f;
                 this.xVelocity = (float)Math.Cos(angle) * speed + sineWave;
                 this.yVelocity = (float)Math.Sin(angle) * speed + sineWave;
-                this.Rotation = angle + (float)Math.PI / 2f; 
+                
+                // FIX: Usamos el campo 'rotation' en minúscula
+                this.rotation = angle + (float)Math.PI / 2f; 
             }
             this.MovePosition(time, Game1.viewport, Game1.currentLocation);
         }
@@ -308,7 +298,8 @@ namespace MonstrosityFramework.Entities
         // ============================================================================================
         private void BehaviorShooter(GameTime time, int speed)
         {
-            this.IsWalker = true;
+            this.isGlider.Value = false; // FIX: Caminante
+            
             if (_fireCooldown > 0) _fireCooldown -= (float)time.ElapsedGameTime.TotalMilliseconds;
             float dist = Vector2.Distance(this.Position, this.Player.Position);
 
@@ -334,26 +325,25 @@ namespace MonstrosityFramework.Entities
 
                 if (_fireCooldown <= 0)
                 {
+                    // FIX: Calculamos velocidad ANTES y usamos constructor correcto de BasicProjectile
+                    Vector2 shotVelocity = Utility.getVelocityTowardPlayer(new Point((int)Position.X, (int)Position.Y), 10f, this.Player);
+
                     Game1.currentLocation.projectiles.Add(new BasicProjectile(
                         damageToFarmer: this.DamageToFarmer,
-                        projectileID: BasicProjectile.shadowBall, 
-                        startingPosition: 0, 
+                        parentSheetIndex: BasicProjectile.shadowBall, // FIX: Nombre de parámetro corregido
                         x: (int)this.Position.X, 
                         y: (int)this.Position.Y, 
                         speed: 10f, 
-                        xVelocity: 0, 
-                        yVelocity: 0, 
-                        motion: Vector2.Zero, 
+                        xVelocity: shotVelocity.X, // FIX: Pasamos la velocidad calculada
+                        yVelocity: shotVelocity.Y, 
+                        rotate: false,
                         collisionSound: "flameSpell_hit", 
                         firingSound: "flameSpell", 
                         explode: false, 
                         damagesMonsters: false, 
                         location: Game1.currentLocation, 
                         shooter: this
-                    )
-                    {
-                        velocity = Utility.getVelocityTowardPlayer(new Point((int)Position.X, (int)Position.Y), 10f, this.Player)
-                    });
+                    ));
                     _fireCooldown = 3000f; 
                 }
             }
@@ -370,7 +360,7 @@ namespace MonstrosityFramework.Entities
                 this.IsInvisible = true;
                 this.HideShadow = true;
                 this.DamageToFarmer = 0; 
-                this.isInvincible = true; 
+                _isInvincibleOverride = true; // FIX: Usamos el override
 
                 if (playerNear && _stateTimer <= 0)
                 {
@@ -383,7 +373,8 @@ namespace MonstrosityFramework.Entities
             {
                 this.IsInvisible = false;
                 this.HideShadow = false;
-                this.isInvincible = false;
+                _isInvincibleOverride = false; // FIX
+                
                 var entry = MonsterRegistry.Get(MonsterSourceId.Value);
                 this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
@@ -459,7 +450,7 @@ namespace MonstrosityFramework.Entities
             if (behavior == "Bat" || behavior == "Ghost")
             {
                 _runAwayTimer = 1000f;
-                _wasHitRecently = true;
+                // variable _wasHitRecently eliminada porque no se usaba para nada más
             }
 
             if (behavior == "RockCrab" && _aiState == 0)
