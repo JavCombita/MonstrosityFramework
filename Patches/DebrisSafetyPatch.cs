@@ -1,48 +1,52 @@
 using HarmonyLib;
 using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
-using StardewValley.Locations;
+using StardewValley.Locations; // Necesario para GameLocation
 using System.Collections.Generic;
 using StardewModdingAPI;
+using System;
 
 namespace MonstrosityFramework.Patches
 {
     [HarmonyPatch(typeof(GameLocation), "drawDebris")]
     public static class DebrisSafetyPatch
     {
-        // Textura de emergencia (cargada una sola vez)
         private static Texture2D _fallbackTexture;
 
         public static void Prefix(GameLocation __instance)
         {
             try
             {
-                // Iteramos al revés para poder eliminar elementos sin romper el índice
                 for (int i = __instance.debris.Count - 1; i >= 0; i--)
                 {
                     var debris = __instance.debris[i];
 
-                    // Verificamos si es un tipo de escombro que requiere textura
                     if (debris.debrisType.Value == Debris.DebrisType.SPRITECHUNKS)
                     {
+                        // EL CAMBIO ESTÁ AQUÍ: Leemos la propiedad y si es null, usamos Reflection para escribir
                         if (debris.spriteChunkSheet == null)
                         {
-                            ModEntry.StaticMonitor.Log($"[DebrisSafety] ¡Debris corrupto detectado en {__instance.Name}! Neutralizando...", LogLevel.Warn);
-
-                            // OPCIÓN A: Repararlo (Asignar textura de Shadow Brute)
+                            // Cargamos textura de emergencia si no existe
                             if (_fallbackTexture == null || _fallbackTexture.IsDisposed)
                             {
                                 try { _fallbackTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute"); }
-                                catch { /* Si falla esto, estamos perdidos */ }
+                                catch { /* Nada que hacer */ }
                             }
                             
                             if (_fallbackTexture != null)
                             {
-                                debris.spriteChunkSheet = _fallbackTexture;
+                                // REFLECTION: Forzamos la escritura en la propiedad de solo lectura
+                                // Usamos 'spriteChunkSheet' asumiendo que SMAPI encontrará el campo de respaldo
+                                ModEntry.ModHelper.Reflection
+                                    .GetProperty<Texture2D>(debris, "spriteChunkSheet")
+                                    .SetValue(_fallbackTexture);
+                                    
+                                // Opcional: Si GetProperty falla, prueba GetField. 
+                                // Pero en 1.6 suele ser una propiedad.
                             }
                             else
                             {
-                                // OPCIÓN B: Si no podemos repararlo, lo borramos para evitar el crash
+                                // Si todo falla, borrar el debris para evitar el crash
                                 __instance.debris.RemoveAt(i);
                             }
                         }
@@ -51,8 +55,8 @@ namespace MonstrosityFramework.Patches
             }
             catch (Exception ex)
             {
-                // Si el parche falla, no queremos romper el juego, solo lo logueamos.
-                ModEntry.StaticMonitor.Log($"Error en DebrisSafetyPatch: {ex.Message}", LogLevel.Error);
+                // Loguear solo una vez para no spammear si falla mucho
+                 ModEntry.StaticMonitor.LogOnce($"Error en DebrisSafetyPatch: {ex.Message}", LogLevel.Trace);
             }
         }
     }
