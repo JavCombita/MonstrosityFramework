@@ -17,6 +17,10 @@ namespace MonstrosityFramework.Entities
     {
         public readonly NetString MonsterSourceId = new();
         
+        // --- CACHÉ DE OPTIMIZACIÓN (Vital para evitar desincronización) ---
+        // Guardamos aquí el tipo de comportamiento para no buscarlo en el registro en cada frame
+        private string _cachedBehavior = "Default"; 
+
         // --- VARIABLES DE ESTADO INTERNO ---
         private bool _hasLoadedData = false;
         private float _stateTimer = 0f;
@@ -57,27 +61,28 @@ namespace MonstrosityFramework.Entities
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             if (entry == null) { EnsureFallbackTexture(); return; }
 
+            // 1. Guardar el comportamiento en Caché (Normalizamos a minúsculas para evitar errores)
+            // Esto asegura que 'rockcrab', 'RockCrab' y 'ROCKCRAB' funcionen igual.
+            _cachedBehavior = (entry.Data.BehaviorType ?? "Default").ToLowerInvariant();
+
+            // 2. Stats
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
             this.Health = this.MaxHealth;
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
-            
-            // Asignar defensa
             this.resilience.Value = entry.Data.Defense;
 
-            string behavior = entry.Data.BehaviorType ?? "Default";
-            
-            // Física
-            if (behavior == "Bat" || behavior == "Ghost" || behavior == "Serpent" || behavior == "Slime" || behavior == "Fly") 
+            // 3. Física según Caché
+            if (_cachedBehavior == "bat" || _cachedBehavior == "ghost" || _cachedBehavior == "serpent" || _cachedBehavior == "slime" || _cachedBehavior == "fly") 
                 this.isGlider.Value = true;
             else
                 this.isGlider.Value = false;
 
-            if (behavior == "Stalker" || behavior == "Tank" || behavior == "Shooter" || behavior == "Mummy" || behavior == "Exploder")
+            if (_cachedBehavior == "stalker" || _cachedBehavior == "tank" || _cachedBehavior == "shooter" || _cachedBehavior == "mummy" || _cachedBehavior == "exploder")
                 this.focusedOnFarmers = true;
 
-            // Sprite
+            // 4. Sprite
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             
             try
@@ -108,22 +113,26 @@ namespace MonstrosityFramework.Entities
 
         public override int takeDamage(int damage, int xTrajectory, int yTrajectory, bool isBomb, double addedPrecision, Farmer who)
         {
-            var entry = MonsterRegistry.Get(MonsterSourceId.Value);
-            string behavior = entry?.Data.BehaviorType ?? "Default";
+            // Usamos la variable de caché, ya no buscamos en el registro (Más rápido y seguro)
+            
+            if (_cachedBehavior == "bat" || _cachedBehavior == "ghost") _runAwayTimer = 1000f;
 
-            if (behavior == "Bat" || behavior == "Ghost") _runAwayTimer = 1000f;
-
-            // IA CANGREJO: Despertar al ser golpeado
-            if (behavior == "RockCrab" && _aiState == 0)
+            // --- CORRECCIÓN CANGREJO ---
+            // Si es RockCrab y está en estado 0 (Roca/Oculto)
+            if (_cachedBehavior == "rockcrab" && _aiState == 0)
             {
-                Game1.playSound("hitRock");
-                _aiState = 1;       // Despertar forzoso
+                // Si recibe daño (incluso 0), DEBE despertar
+                _aiState = 1;       
                 _stateTimer = 500f; 
-                this.Sprite.currentFrame = 1;
-                return 0; // Bloquear daño inicial
+                this.Sprite.currentFrame = 1; // Forzamos cambio visual inmediato
+                Game1.playSound("hitRock");   // Sonido de caparazón
+                
+                // Si se usa un pico (hit con herramienta), hace daño extra a la coraza
+                // Pero por defecto, bloqueamos el daño del primer golpe para simular la coraza dura
+                return 0; 
             }
 
-            if (behavior == "Mummy")
+            if (_cachedBehavior == "mummy")
             {
                 if (_isMummyDown)
                 {
@@ -181,23 +190,23 @@ namespace MonstrosityFramework.Entities
                 if (this.Sprite?.spriteTexture == null) return;
             }
 
-            var entry = MonsterRegistry.Get(MonsterSourceId.Value);
-            string behavior = entry?.Data.BehaviorType ?? "Default";
-            int speed = entry?.Data.Speed ?? 2;
+            // Recuperamos velocidad desde el registro (esto sí puede cambiar dinámicamente)
+            int speed = MonsterRegistry.Get(MonsterSourceId.Value)?.Data.Speed ?? 2;
 
-            switch (behavior)
+            // Usamos el switch con la variable CACHÉ (minúsculas)
+            switch (_cachedBehavior)
             {
-                case "Slime":       BehaviorSlime(time, speed); break;
-                case "Bat":         BehaviorBat(time, speed); break;
-                case "Ghost":       BehaviorGhost(time, speed); break;
-                case "Shooter":     BehaviorShooter(time, speed); break;
-                case "RockCrab":    BehaviorRockCrab(time, speed); break; // <--- Actualizado
-                case "Duggy":       BehaviorDuggy(time, speed); break;
-                case "Serpent":     BehaviorSerpent(time, speed); break;
-                case "Mummy":       BehaviorMummy(time, speed); break;
-                case "Exploder":    BehaviorExploder(time, speed); break;
-                case "Tank":        BehaviorTank(time, speed); break;
-                case "Stalker":     
+                case "slime":       BehaviorSlime(time, speed); break;
+                case "bat":         BehaviorBat(time, speed); break;
+                case "ghost":       BehaviorGhost(time, speed); break;
+                case "shooter":     BehaviorShooter(time, speed); break;
+                case "rockcrab":    BehaviorRockCrab(time, speed); break; // <--- ARREGLADO
+                case "duggy":       BehaviorDuggy(time, speed); break;
+                case "serpent":     BehaviorSerpent(time, speed); break;
+                case "mummy":       BehaviorMummy(time, speed); break;
+                case "exploder":    BehaviorExploder(time, speed); break;
+                case "tank":        BehaviorTank(time, speed); break;
+                case "stalker":     
                 default:            BehaviorStalker(time, speed); break;
             }
         }
@@ -206,39 +215,45 @@ namespace MonstrosityFramework.Entities
 
         private void BehaviorRockCrab(GameTime time, int speed)
         {
-            if (_aiState == 0) // ROCA
+            if (_aiState == 0) // ESTADO: ROCA
             {
                 this.DamageToFarmer = 0;
                 this.Sprite.currentFrame = 0;
-                this.HideShadow = true; // Ocultar sombra
+                this.HideShadow = true; 
                 this.IsWalkingTowardPlayer = false;
 
-                // Detección por distancia (aprox 3 bloques)
-                if (Vector2.Distance(this.Position, this.Player.Position) < 200f) 
+                // MEJORA: Usar el centro de la caja de colisión para medir distancia es más preciso
+                // 192f = 3 casillas (64*3)
+                float distance = Vector2.Distance(this.GetBoundingBox().Center.ToVector2(), this.Player.GetBoundingBox().Center.ToVector2());
+
+                if (distance < 192f) 
                 {
-                    _aiState = 1;
+                    _aiState = 1; // Despertar
                     _stateTimer = 500f;
                     Game1.playSound("stoneCrack");
                     this.shake(Game1.random.Next(2, 4));
                 }
             }
-            else if (_aiState == 1) // DESPERTANDO
+            else if (_aiState == 1) // ESTADO: LEVANTÁNDOSE
             {
-                this.HideShadow = false; // Mostrar sombra
+                this.HideShadow = false; 
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 this.Sprite.currentFrame = 1;
                 
                 if (_stateTimer <= 0) { 
-                    _aiState = 2; 
+                    _aiState = 2; // Listo para pelear
+                    // Restaurar daño
                     var entry = MonsterRegistry.Get(MonsterSourceId.Value);
                     this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
                 }
             }
-            else // PERSECUCIÓN
+            else // ESTADO: PERSECUCIÓN
             {
                 this.HideShadow = false;
-                // Si el jugador se aleja mucho, volver a dormir
-                if (Vector2.Distance(this.Position, this.Player.Position) > 400f) { 
+                
+                // Si el jugador se aleja más de 6 casillas (384px), volver a esconderse
+                float distance = Vector2.Distance(this.GetBoundingBox().Center.ToVector2(), this.Player.GetBoundingBox().Center.ToVector2());
+                if (distance > 384f) { 
                     _aiState = 0; 
                     this.Sprite.currentFrame = 0; 
                     return; 
