@@ -40,13 +40,16 @@ namespace MonstrosityFramework
             helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos.", ListMonsters);
             helper.ConsoleCommands.Add("monster_reload", "Recarga JSONs y texturas.", ReloadMonstersCommand);
 			
-			// INICIALIZAR HARMONY
-			var harmony = new Harmony(this.ModManifest.UniqueID);
-    
-			// Aplicar todos los parches (incluyendo el DebrisSafetyPatch)
-			harmony.PatchAll(); 
-    
-			Monitor.Log("Escudo de Estabilidad (Harmony) activado.", LogLevel.Info);
+			try 
+			{
+				var harmony = new Harmony(this.ModManifest.UniqueID);
+				harmony.PatchAll(); // <--- ¡VITAL!
+				Monitor.Log("Escudo de Estabilidad (Harmony) activado.", LogLevel.Info);
+			}
+			catch (Exception ex)
+			{
+				Monitor.Log($"Error iniciando Harmony: {ex.Message}", LogLevel.Error);
+			}
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)

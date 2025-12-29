@@ -21,9 +21,10 @@ namespace MonstrosityFramework.Entities
         private bool _hasLoadedData = false;
 
         public CustomMonster() : base() 
-        {
-            // Constructor vacío requerido por Netcode/SaveGame
-        }
+		{
+			// Inicialización preventiva
+			this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
+		}
 
         public CustomMonster(string uniqueId, Vector2 position) : base()
         {
@@ -102,13 +103,18 @@ namespace MonstrosityFramework.Entities
         /// Vital para evitar NullReferenceException en GameLocation.drawDebris.
         /// </summary>
         private void EnsureFallbackTexture()
-        {
-            if (this.Sprite == null) 
-                this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
-                
-            if (this.Sprite.spriteTexture == null)
-                this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute");
-        }
+		{
+			if (this.Sprite == null) 
+				this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
+        
+			// Forzamos la carga si es null
+			if (this.Sprite.spriteTexture == null)
+			{
+				try {
+					this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute");
+				} catch { /* Si esto falla, el juego base está roto */ }
+			}
+		}
 
         public override void behaviorAtGameTick(GameTime time)
         {
