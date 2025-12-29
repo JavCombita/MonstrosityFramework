@@ -64,13 +64,16 @@ namespace MonstrosityFramework.Entities
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             this.resilience.Value = entry.Data.Defense;
+            
+            // FIX: Actualizar la velocidad BASE del juego también
+            this.Speed = entry.Data.Speed; 
 
             if (_cachedBehavior == "bat" || _cachedBehavior == "ghost" || _cachedBehavior == "serpent" || _cachedBehavior == "slime" || _cachedBehavior == "fly") 
                 this.isGlider.Value = true;
             else
                 this.isGlider.Value = false;
 
-            if (_cachedBehavior == "stalker" || _cachedBehavior == "tank" || _cachedBehavior == "shooter" || _cachedBehavior == "mummy" || _cachedBehavior == "exploder")
+            if (_cachedBehavior == "stalker" || _cachedBehavior == "tank" || _cachedBehavior == "shooter" || _cachedBehavior == "mummy" || _cachedBehavior == "exploder" || _cachedBehavior == "rockcrab")
                 this.focusedOnFarmers = true;
 
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
@@ -109,13 +112,17 @@ namespace MonstrosityFramework.Entities
             if (_cachedBehavior == "rockcrab" && _aiState == 0)
             {
                 Game1.playSound("hitRock");
+                
+                // Despertar forzoso
                 _aiState = 1;       
                 _stateTimer = 500f; 
                 
-                // Orientar hacia el agresor para usar el frame correcto
+                // Orientar hacia el agresor
                 this.faceGeneralDirection(who.Position);
                 
-                return 0; // Caparazón duro
+                // Retornamos 0, pero como _isInvincibleOverride estará en true por un frame más,
+                // esto asegura que el daño numérico no pase.
+                return 0; 
             }
 
             if (_cachedBehavior == "mummy")
@@ -170,7 +177,9 @@ namespace MonstrosityFramework.Entities
                 if (this.Sprite?.spriteTexture == null) return;
             }
 
+            // Asegurar que la velocidad base esté actualizada
             int speed = MonsterRegistry.Get(MonsterSourceId.Value)?.Data.Speed ?? 2;
+            this.Speed = speed;
 
             switch (_cachedBehavior)
             {
@@ -178,7 +187,7 @@ namespace MonstrosityFramework.Entities
                 case "bat":         BehaviorBat(time, speed); break;
                 case "ghost":       BehaviorGhost(time, speed); break;
                 case "shooter":     BehaviorShooter(time, speed); break;
-                case "rockcrab":    BehaviorRockCrab(time, speed); break;
+                case "rockcrab":    BehaviorRockCrab(time, speed); break; 
                 case "duggy":       BehaviorDuggy(time, speed); break;
                 case "serpent":     BehaviorSerpent(time, speed); break;
                 case "mummy":       BehaviorMummy(time, speed); break;
@@ -193,55 +202,58 @@ namespace MonstrosityFramework.Entities
 
         private void BehaviorRockCrab(GameTime time, int speed)
         {
-            // Calcular frame base según dirección (0, 4, 8, 12)
-            // Stardew: 0=Abajo, 1=Derecha, 2=Arriba, 3=Izquierda
             int baseFrame = this.FacingDirection * 4;
 
             if (_aiState == 0) // ROCA (Oculto)
             {
-                this.DamageToFarmer = 0; // Inofensivo mientras duerme
-                this.Sprite.currentFrame = baseFrame; // Frame de roca direccional (0, 4, 8, 12)
-                this.Sprite.StopAnimation(); // Congelar
+                // ESTADO: INVENCIBLE Y OCULTO
+                _isInvincibleOverride = true; // FIX: Inmunidad forzada
+                this.DamageToFarmer = 0;
+                
+                this.Sprite.currentFrame = baseFrame; 
+                this.Sprite.StopAnimation(); 
                 this.HideShadow = true; 
                 this.IsWalkingTowardPlayer = false;
 
+                // Si se despierta por proximidad
                 float distance = Vector2.Distance(this.GetBoundingBox().Center.ToVector2(), this.Player.GetBoundingBox().Center.ToVector2());
-
                 if (distance < 192f) 
                 {
-                    _aiState = 1; // Despertar
+                    _aiState = 1;
                     _stateTimer = 500f;
                     Game1.playSound("stoneCrack");
-                    this.faceGeneralDirection(this.Player.Position); // Mirar al jugador al despertar
+                    this.faceGeneralDirection(this.Player.Position); 
                     this.shake(Game1.random.Next(2, 4));
                 }
             }
             else if (_aiState == 1) // LEVANTÁNDOSE
             {
-                this.DamageToFarmer = 0; // Aún inofensivo
+                // ESTADO: AÚN INVENCIBLE (Transición)
+                _isInvincibleOverride = true; 
+                this.DamageToFarmer = 0;
                 this.HideShadow = false; 
+                
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 
-                // Usamos el frame "1" relativo a la dirección (1, 5, 9, 13)
-                // que suele ser el inicio del movimiento.
+                // Animación simple de despertar
                 this.Sprite.currentFrame = baseFrame + 1;
                 this.Sprite.StopAnimation();
                 
                 if (_stateTimer <= 0) { 
-                    _aiState = 2; // ATAQUE
+                    _aiState = 2; 
+                    _isInvincibleOverride = false; // YA ES VULNERABLE
+                    
+                    // Restaurar daño
+                    var entry = MonsterRegistry.Get(MonsterSourceId.Value);
+                    this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
                 }
             }
             else // PERSECUCIÓN
             {
-                // FIX: Restaurar daño si es 0
-                if (this.DamageToFarmer == 0)
-                {
-                    var entry = MonsterRegistry.Get(MonsterSourceId.Value);
-                    this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
-                }
-
+                _isInvincibleOverride = false; // Asegurar vulnerabilidad
                 this.HideShadow = false;
                 
+                // Distancia para volver a dormir
                 float distance = Vector2.Distance(this.GetBoundingBox().Center.ToVector2(), this.Player.GetBoundingBox().Center.ToVector2());
                 if (distance > 384f) { 
                     _aiState = 0; 
@@ -250,8 +262,8 @@ namespace MonstrosityFramework.Entities
                 
                 this.IsWalkingTowardPlayer = true;
                 
-                // Dejamos que el motor base anime el caminar (frames 1-3, 5-7, etc)
-                // Esto usa baseFrame + 1, +2, +3 automáticamente
+                // FIX: Permitir animación al mover
+                // Si moveTowardPlayer mueve al monstruo, Stardew actualizará el frame automáticamente.
                 base.moveTowardPlayer(speed);
             }
         }
