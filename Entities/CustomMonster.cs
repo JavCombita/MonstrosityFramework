@@ -12,7 +12,6 @@ using System.Collections.Generic;
 
 namespace MonstrosityFramework.Entities
 {
-    // Vital para guardar partida con SpaceCore
     [XmlType("Mods_JavCombita_Monstrosity_CustomMonster")] 
     public class CustomMonster : Monster
     {
@@ -20,29 +19,16 @@ namespace MonstrosityFramework.Entities
         
         // --- VARIABLES DE ESTADO INTERNO ---
         private bool _hasLoadedData = false;
-        
-        // Control genérico de estados (usado por todas las IAs)
         private float _stateTimer = 0f;
         private int _aiState = 0; 
-        
-        // Control de invulnerabilidad (Override para Duggy/RockCrab/Mummy)
         private bool _isInvincibleOverride = false;
-        
-        // IA Tirador
         private float _fireCooldown = 0f;
-        
-        // IA Volador
         private float _runAwayTimer = 0f;
-
-        // IA Momia
         private bool _isMummyDown = false;
         private float _reviveTimer = 0f;
-
-        // IA Exploder (HotHead)
         private bool _isExploding = false;
 
         // --- CONSTRUCTORES ---
-
         public CustomMonster() : base() 
         {
             EnsureFallbackTexture();
@@ -63,7 +49,6 @@ namespace MonstrosityFramework.Entities
         }
 
         // --- SISTEMA DE CARGA DE DATOS ---
-
         public void ReloadData()
         {
             _hasLoadedData = true;
@@ -79,23 +64,19 @@ namespace MonstrosityFramework.Entities
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             
+            // Asignar defensa al campo nativo 'resilience'
+            this.resilience.Value = entry.Data.Defense;
+
             string behavior = entry.Data.BehaviorType ?? "Default";
             
-            // Configurar física (isGlider es un NetBool en 1.6)
+            // Configurar física
             if (behavior == "Bat" || behavior == "Ghost" || behavior == "Serpent" || behavior == "Slime" || behavior == "Fly") 
-            {
                 this.isGlider.Value = true;
-            }
             else
-            {
                 this.isGlider.Value = false;
-            }
 
-            // Optimización de pathfinding para caminantes
             if (behavior == "Stalker" || behavior == "Tank" || behavior == "Shooter" || behavior == "Mummy" || behavior == "Exploder")
-            {
-                this.focusedOnFarmers = true; // Ayuda a que no se atoren tanto
-            }
+                this.focusedOnFarmers = true;
 
             // Configurar Sprite
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
@@ -120,8 +101,7 @@ namespace MonstrosityFramework.Entities
             }
         }
 
-        // --- OVERRIDES DEL MOTOR DE JUEGO ---
-
+        // --- OVERRIDES ---
         public override bool isInvincible()
         {
             return _isInvincibleOverride || base.isInvincible();
@@ -132,41 +112,36 @@ namespace MonstrosityFramework.Entities
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             string behavior = entry?.Data.BehaviorType ?? "Default";
 
-            // IA Voladora: Huir al ser golpeado
-            if (behavior == "Bat" || behavior == "Ghost")
-            {
-                _runAwayTimer = 1000f;
-            }
+            if (behavior == "Bat" || behavior == "Ghost") _runAwayTimer = 1000f;
 
-            // IA Cangrejo: Invulnerable si está escondido
             if (behavior == "RockCrab" && _aiState == 0)
             {
                 Game1.playSound("hitRock");
                 return 0; 
             }
 
-            // IA Momia: Mecánica de resurrección
             if (behavior == "Mummy")
             {
                 if (_isMummyDown)
                 {
-                    if (isBomb) // Solo muere con bombas
+                    if (isBomb) 
                     {
                         Game1.playSound("rockGolemHit"); 
                         return base.takeDamage(9999, 0, 0, true, addedPrecision, who);
                     }
-                    return 0; // Inmune a espadas en el suelo
+                    return 0; 
                 }
                 else
                 {
-                    int actualDamage = Math.Max(1, damage - (int)this.Defense);
+                    // FIX: Usamos this.resilience.Value en lugar de this.Defense
+                    int actualDamage = Math.Max(1, damage - this.resilience.Value);
                     if (this.Health - actualDamage <= 0)
                     {
-                        this.Health = 1; // Evitar muerte
+                        this.Health = 1; 
                         _isMummyDown = true;
-                        _reviveTimer = 10000f; // 10s para revivir
+                        _reviveTimer = 10000f; 
                         Game1.playSound("rockGolemHit");
-                        this.Sprite.currentFrame = 4; // Frame de "caído" (ajustar según sprite)
+                        this.Sprite.currentFrame = 4; 
                         return 0; 
                     }
                 }
@@ -195,13 +170,9 @@ namespace MonstrosityFramework.Entities
             return drops;
         }
 
-        // ============================================================================================
-        // 🧠 CEREBRO CENTRAL (AI DISPATCHER)
-        // ============================================================================================
-        
+        // --- CEREBRO CENTRAL ---
         public override void behaviorAtGameTick(GameTime time)
         {
-            // 1. Lazy Loading Seguro
             if (!_hasLoadedData || this.Sprite?.spriteTexture == null)
             {
                 if (!string.IsNullOrEmpty(MonsterSourceId.Value)) ReloadData();
@@ -212,7 +183,6 @@ namespace MonstrosityFramework.Entities
             string behavior = entry?.Data.BehaviorType ?? "Default";
             int speed = entry?.Data.Speed ?? 2;
 
-            // 2. Selección de Comportamiento
             switch (behavior)
             {
                 case "Slime":       BehaviorSlime(time, speed); break;
@@ -230,9 +200,61 @@ namespace MonstrosityFramework.Entities
             }
         }
 
-        // ============================================================================================
-        // 🤖 COMPORTAMIENTOS (BEHAVIORS)
-        // ============================================================================================
+        // --- BEHAVIORS ---
+
+        private void BehaviorShooter(GameTime time, int speed)
+        {
+            this.isGlider.Value = false; 
+            if (_fireCooldown > 0) _fireCooldown -= (float)time.ElapsedGameTime.TotalMilliseconds;
+            float dist = Vector2.Distance(this.Position, this.Player.Position);
+
+            if (dist > 350f) 
+            {
+                this.IsWalkingTowardPlayer = true;
+                base.moveTowardPlayer(speed);
+            }
+            else if (dist < 100f)
+            {
+                this.IsWalkingTowardPlayer = false;
+                Vector2 away = this.Position - this.Player.Position;
+                away.Normalize();
+                this.xVelocity = away.X * speed;
+                this.yVelocity = away.Y * speed;
+                this.MovePosition(time, Game1.viewport, Game1.currentLocation);
+            }
+            else 
+            {
+                this.IsWalkingTowardPlayer = false;
+                this.Halt(); 
+                this.faceGeneralDirection(this.Player.Position);
+
+                if (_fireCooldown <= 0)
+                {
+                    Vector2 shotVelocity = Utility.getVelocityTowardPlayer(new Point((int)Position.X, (int)Position.Y), 10f, this.Player);
+
+                    // FIX: Argumentos corregidos para el constructor de BasicProjectile (Vector2 en lugar de int para position)
+                    Game1.currentLocation.projectiles.Add(new BasicProjectile(
+                        this.DamageToFarmer,           
+                        BasicProjectile.shadowBall,    
+                        0,                             
+                        0,                             
+                        0f,                            
+                        shotVelocity.X,                
+                        shotVelocity.Y,                
+                        this.Position, // FIX: Pasar this.Position (Vector2), no 0 (int)
+                        "flameSpell_hit",              
+                        "flameSpell",                  
+                        false,                         
+                        false,                         
+                        Game1.currentLocation,         
+                        this,                          
+                        false,                         
+                        null                           
+                    ));
+                    _fireCooldown = 3000f; 
+                }
+            }
+        }
 
         private void BehaviorSlime(GameTime time, int speed)
         {
@@ -246,7 +268,7 @@ namespace MonstrosityFramework.Entities
                     {
                         if (Game1.random.NextDouble() < 0.02) 
                         {
-                            _aiState = 1; // Cargar
+                            _aiState = 1; 
                             _stateTimer = 600f;
                             Game1.playSound("slimeHit");
                             this.Halt();
@@ -261,7 +283,7 @@ namespace MonstrosityFramework.Entities
                 this.shake(Game1.random.Next(1, 3)); 
                 if (_stateTimer <= 0)
                 {
-                    _aiState = 2; // SALTO
+                    _aiState = 2; 
                     _stateTimer = 500f;
                     Vector2 velocity = Utility.getVelocityTowardPlayer(new Point((int)this.Position.X, (int)this.Position.Y), speed * 4f, this.Player);
                     this.xVelocity = velocity.X;
@@ -270,10 +292,10 @@ namespace MonstrosityFramework.Entities
                     Game1.playSound("slimeJump");
                 }
             }
-            else if (_aiState == 2) // EN AIRE
+            else if (_aiState == 2) // AIRE
             {
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                this.Position += new Vector2(this.xVelocity, this.yVelocity); // Fix CS1612
+                this.Position += new Vector2(this.xVelocity, this.yVelocity);
 
                 if (_stateTimer < 250) { this.xVelocity *= 0.90f; this.yVelocity *= 0.90f; }
 
@@ -353,60 +375,6 @@ namespace MonstrosityFramework.Entities
             this.MovePosition(time, Game1.viewport, Game1.currentLocation);
         }
 
-        private void BehaviorShooter(GameTime time, int speed)
-        {
-            this.isGlider.Value = false; 
-            if (_fireCooldown > 0) _fireCooldown -= (float)time.ElapsedGameTime.TotalMilliseconds;
-            float dist = Vector2.Distance(this.Position, this.Player.Position);
-
-            if (dist > 350f) 
-            {
-                this.IsWalkingTowardPlayer = true;
-                base.moveTowardPlayer(speed);
-            }
-            else if (dist < 100f)
-            {
-                this.IsWalkingTowardPlayer = false;
-                Vector2 away = this.Position - this.Player.Position;
-                away.Normalize();
-                this.xVelocity = away.X * speed;
-                this.yVelocity = away.Y * speed;
-                this.MovePosition(time, Game1.viewport, Game1.currentLocation);
-            }
-            else 
-            {
-                this.IsWalkingTowardPlayer = false;
-                this.Halt(); 
-                this.faceGeneralDirection(this.Player.Position);
-
-                if (_fireCooldown <= 0)
-                {
-                    Vector2 shotVelocity = Utility.getVelocityTowardPlayer(new Point((int)Position.X, (int)Position.Y), 10f, this.Player);
-
-                    // Fix CS1739: Argumentos posicionales
-                    Game1.currentLocation.projectiles.Add(new BasicProjectile(
-                        this.DamageToFarmer,           
-                        BasicProjectile.shadowBall,    
-                        0,                             
-                        0,                             
-                        0f,                            
-                        shotVelocity.X,                
-                        shotVelocity.Y,                
-                        0,                             
-                        "flameSpell_hit",              
-                        "flameSpell",                  
-                        false,                         
-                        false,                         
-                        Game1.currentLocation,         
-                        this,                          
-                        false,                         
-                        null                           
-                    ));
-                    _fireCooldown = 3000f; 
-                }
-            }
-        }
-
         private void BehaviorDuggy(GameTime time, int speed)
         {
             bool playerNear = withinPlayerThreshold(3);
@@ -416,13 +384,7 @@ namespace MonstrosityFramework.Entities
                 this.HideShadow = true;
                 this.DamageToFarmer = 0; 
                 _isInvincibleOverride = true; 
-
-                if (playerNear && _stateTimer <= 0)
-                {
-                    Game1.playSound("dig");
-                    _aiState = 1;
-                    _stateTimer = 2000f; 
-                }
+                if (playerNear && _stateTimer <= 0) { Game1.playSound("dig"); _aiState = 1; _stateTimer = 2000f; }
             }
             else // Arriba
             {
@@ -443,29 +405,21 @@ namespace MonstrosityFramework.Entities
             {
                 this.DamageToFarmer = 0;
                 this.Sprite.currentFrame = 0;
-                if (withinPlayerThreshold(3)) {
-                    _aiState = 1;
-                    _stateTimer = 500f;
-                    Game1.playSound("stoneCrack");
-                }
+                if (withinPlayerThreshold(3)) { _aiState = 1; _stateTimer = 500f; Game1.playSound("stoneCrack"); }
             }
             else if (_aiState == 1) // Despertando
             {
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 this.Sprite.currentFrame = 1;
-                if (_stateTimer <= 0) {
-                    _aiState = 2;
+                if (_stateTimer <= 0) { 
+                    _aiState = 2; 
                     var entry = MonsterRegistry.Get(MonsterSourceId.Value);
                     this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
                 }
             }
             else // Persiguiendo
             {
-                if (!withinPlayerThreshold(10)) {
-                    _aiState = 0; 
-                    this.Sprite.currentFrame = 0;
-                    return;
-                }
+                if (!withinPlayerThreshold(10)) { _aiState = 0; this.Sprite.currentFrame = 0; return; }
                 this.IsWalkingTowardPlayer = true;
                 base.moveTowardPlayer(speed);
             }
@@ -479,8 +433,7 @@ namespace MonstrosityFramework.Entities
                 this.Halt();
                 this.isGlider.Value = false;
                 _isInvincibleOverride = true;
-                this.Sprite.currentFrame = 4; // Frame de "derrotado"
-                
+                this.Sprite.currentFrame = 4; 
                 _reviveTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (_reviveTimer <= 0)
                 {
@@ -504,10 +457,8 @@ namespace MonstrosityFramework.Entities
                 this.Halt();
                 this.shake(Game1.random.Next(2, 5));
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-
                 if (_stateTimer <= 0)
                 {
-                    // BOOM
                     this.Health = -999; 
                     Game1.createRadialDebris(Game1.currentLocation, 12, (int)this.Position.X / 64, (int)this.Position.Y / 64, 6, false);
                     Game1.playSound("explosion");
@@ -518,12 +469,7 @@ namespace MonstrosityFramework.Entities
             else
             {
                 BehaviorStalker(time, speed);
-                if (this.Health < this.MaxHealth * 0.2f)
-                {
-                    _isExploding = true;
-                    _stateTimer = 2000f;
-                    Game1.playSound("fuse");
-                }
+                if (this.Health < this.MaxHealth * 0.2f) { _isExploding = true; _stateTimer = 2000f; Game1.playSound("fuse"); }
             }
         }
 
@@ -539,6 +485,16 @@ namespace MonstrosityFramework.Entities
             if (!withinPlayerThreshold(10)) return;
             this.IsWalkingTowardPlayer = true;
             base.moveTowardPlayer(Math.Max(1, speed - 1));
+        }
+
+        private bool IsPlayerLookingAtMe()
+        {
+            Vector2 toMonster = this.Position - this.Player.Position;
+            int faceDir = this.Player.FacingDirection; 
+            if (Math.Abs(toMonster.X) > Math.Abs(toMonster.Y))
+                return (toMonster.X > 0 && faceDir == 1) || (toMonster.X < 0 && faceDir == 3);
+            else
+                return (toMonster.Y > 0 && faceDir == 2) || (toMonster.Y < 0 && faceDir == 0);
         }
     }
 }
