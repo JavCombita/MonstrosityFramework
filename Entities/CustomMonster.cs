@@ -57,7 +57,6 @@ namespace MonstrosityFramework.Entities
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             if (entry == null) { EnsureFallbackTexture(); return; }
 
-            // Aplicar Stats
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
             this.Health = this.MaxHealth;
@@ -69,7 +68,7 @@ namespace MonstrosityFramework.Entities
 
             string behavior = entry.Data.BehaviorType ?? "Default";
             
-            // Configurar física
+            // Física
             if (behavior == "Bat" || behavior == "Ghost" || behavior == "Serpent" || behavior == "Slime" || behavior == "Fly") 
                 this.isGlider.Value = true;
             else
@@ -78,7 +77,7 @@ namespace MonstrosityFramework.Entities
             if (behavior == "Stalker" || behavior == "Tank" || behavior == "Shooter" || behavior == "Mummy" || behavior == "Exploder")
                 this.focusedOnFarmers = true;
 
-            // Configurar Sprite
+            // Sprite
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             
             try
@@ -114,10 +113,14 @@ namespace MonstrosityFramework.Entities
 
             if (behavior == "Bat" || behavior == "Ghost") _runAwayTimer = 1000f;
 
+            // IA CANGREJO: Despertar al ser golpeado
             if (behavior == "RockCrab" && _aiState == 0)
             {
                 Game1.playSound("hitRock");
-                return 0; 
+                _aiState = 1;       // Despertar forzoso
+                _stateTimer = 500f; 
+                this.Sprite.currentFrame = 1;
+                return 0; // Bloquear daño inicial
             }
 
             if (behavior == "Mummy")
@@ -188,7 +191,7 @@ namespace MonstrosityFramework.Entities
                 case "Bat":         BehaviorBat(time, speed); break;
                 case "Ghost":       BehaviorGhost(time, speed); break;
                 case "Shooter":     BehaviorShooter(time, speed); break;
-                case "RockCrab":    BehaviorRockCrab(time, speed); break;
+                case "RockCrab":    BehaviorRockCrab(time, speed); break; // <--- Actualizado
                 case "Duggy":       BehaviorDuggy(time, speed); break;
                 case "Serpent":     BehaviorSerpent(time, speed); break;
                 case "Mummy":       BehaviorMummy(time, speed); break;
@@ -200,6 +203,51 @@ namespace MonstrosityFramework.Entities
         }
 
         // --- BEHAVIORS ---
+
+        private void BehaviorRockCrab(GameTime time, int speed)
+        {
+            if (_aiState == 0) // ROCA
+            {
+                this.DamageToFarmer = 0;
+                this.Sprite.currentFrame = 0;
+                this.HideShadow = true; // Ocultar sombra
+                this.IsWalkingTowardPlayer = false;
+
+                // Detección por distancia (aprox 3 bloques)
+                if (Vector2.Distance(this.Position, this.Player.Position) < 200f) 
+                {
+                    _aiState = 1;
+                    _stateTimer = 500f;
+                    Game1.playSound("stoneCrack");
+                    this.shake(Game1.random.Next(2, 4));
+                }
+            }
+            else if (_aiState == 1) // DESPERTANDO
+            {
+                this.HideShadow = false; // Mostrar sombra
+                _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
+                this.Sprite.currentFrame = 1;
+                
+                if (_stateTimer <= 0) { 
+                    _aiState = 2; 
+                    var entry = MonsterRegistry.Get(MonsterSourceId.Value);
+                    this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
+                }
+            }
+            else // PERSECUCIÓN
+            {
+                this.HideShadow = false;
+                // Si el jugador se aleja mucho, volver a dormir
+                if (Vector2.Distance(this.Position, this.Player.Position) > 400f) { 
+                    _aiState = 0; 
+                    this.Sprite.currentFrame = 0; 
+                    return; 
+                }
+                
+                this.IsWalkingTowardPlayer = true;
+                base.moveTowardPlayer(speed);
+            }
+        }
 
         private void BehaviorShooter(GameTime time, int speed)
         {
@@ -231,25 +279,23 @@ namespace MonstrosityFramework.Entities
                 {
                     Vector2 shotVelocity = Utility.getVelocityTowardPlayer(new Point((int)Position.X, (int)Position.Y), 10f, this.Player);
 
-                    // FIX CRÍTICO: Eliminado el argumento 'false' (spriteFromObjectSheet) que sobraba.
-                    // Ahora son 16 argumentos exactos.
                     Game1.currentLocation.projectiles.Add(new BasicProjectile(
-                        this.DamageToFarmer,           // 1. Damage
-                        BasicProjectile.shadowBall,    // 2. Index
-                        0,                             // 3. Loops
-                        0,                             // 4. Tiles
-                        0f,                            // 5. Rotation Vel
-                        shotVelocity.X,                // 6. X Vel
-                        shotVelocity.Y,                // 7. Y Vel
-                        this.Position,                 // 8. Start Pos
-                        "flameSpell_hit",              // 9. Sound Hit
-                        "flameSpell",                  // 10. Sound Fire
-                        null,                          // 11. Debuff ID
-                        false,                         // 12. Explode
-                        false,                         // 13. Damage Monsters
-                        Game1.currentLocation,         // 14. Location
-                        this,                          // 15. Shooter
-                        null                           // 16. Collision Behavior (Delegate)
+                        this.DamageToFarmer,           
+                        BasicProjectile.shadowBall,    
+                        0,                             
+                        0,                             
+                        0f,                            
+                        shotVelocity.X,                
+                        shotVelocity.Y,                
+                        this.Position,                 
+                        "flameSpell_hit",              
+                        "flameSpell",                  
+                        null,                          
+                        false,                         
+                        false,                         
+                        Game1.currentLocation,         
+                        this,                          
+                        null                           
                     ));
                     _fireCooldown = 3000f; 
                 }
@@ -396,32 +442,6 @@ namespace MonstrosityFramework.Entities
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 this.Sprite.Animate(time, 0, 4, 150f);
                 if (_stateTimer <= 0) { _aiState = 0; _stateTimer = 1000f; }
-            }
-        }
-
-        private void BehaviorRockCrab(GameTime time, int speed)
-        {
-            if (_aiState == 0) // Roca
-            {
-                this.DamageToFarmer = 0;
-                this.Sprite.currentFrame = 0;
-                if (withinPlayerThreshold(3)) { _aiState = 1; _stateTimer = 500f; Game1.playSound("stoneCrack"); }
-            }
-            else if (_aiState == 1) // Despertando
-            {
-                _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                this.Sprite.currentFrame = 1;
-                if (_stateTimer <= 0) { 
-                    _aiState = 2; 
-                    var entry = MonsterRegistry.Get(MonsterSourceId.Value);
-                    this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
-                }
-            }
-            else // Persiguiendo
-            {
-                if (!withinPlayerThreshold(10)) { _aiState = 0; this.Sprite.currentFrame = 0; return; }
-                this.IsWalkingTowardPlayer = true;
-                base.moveTowardPlayer(speed);
             }
         }
 
