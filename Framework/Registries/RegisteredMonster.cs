@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using MonstrosityFramework.Framework.Data;
 using System;
+using System.IO; // Necesario para Path y FileStream
 using StardewValley;
 
 namespace MonstrosityFramework.Framework.Registries
@@ -38,18 +39,29 @@ namespace MonstrosityFramework.Framework.Registries
 
             try
             {
-                // CASO A: Content Pack (Sistema SMAPI 4.0)
+                // CASO A: Content Pack (Carga física segura)
                 if (SourcePack != null)
                 {
-                    [cite_start]// CORRECCIÓN: Usamos ModContent.Load<T> como indica la documentación 
-                    ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' desde pack '{SourcePack.Manifest.Name}'", LogLevel.Trace);
+                    // Construimos la ruta completa física
+                    string fullPath = Path.Combine(SourcePack.DirectoryPath, Data.TexturePath);
                     
-                    _textureCache = SourcePack.ModContent.Load<Texture2D>(Data.TexturePath);
-                    
-                    if (_textureCache != null)
-                        _textureCache.Name = $"{OwnerManifest.UniqueID}/{Data.TexturePath}";
+                    if (File.Exists(fullPath))
+                    {
+                        ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' desde '{SourcePack.Manifest.Name}'", LogLevel.Trace);
+                        
+                        // Usamos FileStream para leer el PNG y convertirlo a Texture2D
+                        using (FileStream stream = new FileStream(fullPath, FileMode.Open))
+                        {
+                            _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);
+                            _textureCache.Name = $"{OwnerManifest.UniqueID}/{Data.TexturePath}";
+                        }
+                    }
+                    else
+                    {
+                        ModEntry.StaticMonitor.Log($"[Texture] Archivo no encontrado: {fullPath}", LogLevel.Error);
+                    }
                 }
-                // CASO B: Legacy / Vanilla (Carga vía Game Content)
+                // CASO B: Legacy / Vanilla (Carga vía Pipeline)
                 else
                 {
                     ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' via Game Content", LogLevel.Trace);
