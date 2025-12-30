@@ -2,7 +2,7 @@ using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using MonstrosityFramework.Framework.Data;
 using System;
-using System.IO; // Necesario para Path y FileStream
+using System.IO; 
 using StardewValley;
 
 namespace MonstrosityFramework.Framework.Registries
@@ -16,6 +16,7 @@ namespace MonstrosityFramework.Framework.Registries
         private Texture2D _textureCache;
         private bool _hasTriedLoading = false;
 
+        // Constructor para Content Packs (Existente)
         public RegisteredMonster(IContentPack pack, MonsterData data)
         {
             SourcePack = pack;
@@ -23,11 +24,22 @@ namespace MonstrosityFramework.Framework.Registries
             Data = data;
         }
 
+        // Constructor para Mods C# (Existente)
         public RegisteredMonster(IManifest owner, MonsterData data)
         {
             SourcePack = null;
             OwnerManifest = owner;
             Data = data;
+        }
+
+        // --- NUEVO CONSTRUCTOR (Soluciona el error CS1729) ---
+        // Este es el que está llamando MonsterRegistry.cs
+        public RegisteredMonster(MonsterData data, IContentPack pack, IManifest manifest)
+        {
+            Data = data;
+            SourcePack = pack;
+            // Si pasan un manifiesto explícito úsalo, si no, intenta sacar el del pack
+            OwnerManifest = manifest ?? pack?.Manifest; 
         }
 
         public Texture2D GetTexture()
@@ -42,14 +54,9 @@ namespace MonstrosityFramework.Framework.Registries
                 // CASO A: Content Pack (Carga física segura)
                 if (SourcePack != null)
                 {
-                    // Construimos la ruta completa física
                     string fullPath = Path.Combine(SourcePack.DirectoryPath, Data.TexturePath);
-                    
                     if (File.Exists(fullPath))
                     {
-                        ModEntry.StaticMonitor.Log($"[Texture] Cargando '{Data.TexturePath}' desde '{SourcePack.Manifest.Name}'", LogLevel.Trace);
-                        
-                        // Usamos FileStream para leer el PNG y convertirlo a Texture2D
                         using (FileStream stream = new FileStream(fullPath, FileMode.Open))
                         {
                             _textureCache = Texture2D.FromStream(Game1.graphics.GraphicsDevice, stream);

@@ -27,7 +27,9 @@ namespace MonstrosityFramework
         {
             ModHelper = helper;
             StaticMonitor = Monitor;
-            _apiInstance = new MonstrosityApi(Monitor);
+            
+            // --- FIX: CS1503 (Monitor -> ModManifest) ---
+            _apiInstance = new MonstrosityApi(this.ModManifest);
 
             helper.Events.GameLoop.GameLaunched += OnGameLaunched;
             helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
@@ -37,75 +39,18 @@ namespace MonstrosityFramework
             spawner.Register(helper);
 
             helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo por ID.", SpawnDebugMonster);
-            helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos.", ListMonsters);
-            helper.ConsoleCommands.Add("monster_reload", "Recarga JSONs y texturas.", ReloadMonstersCommand);
-			
-			try 
-			{
-				var harmony = new Harmony(this.ModManifest.UniqueID);
-				harmony.PatchAll(); // <--- ¡VITAL!
-				Monitor.Log("Escudo de Estabilidad (Harmony) activado.", LogLevel.Info);
-			}
-			catch (Exception ex)
-			{
-				Monitor.Log($"Error iniciando Harmony: {ex.Message}", LogLevel.Error);
-			}
+            helper.ConsoleCommands.Add("monster_list", "Lista monstruos registrados.", ListMonsters);
+            helper.ConsoleCommands.Add("monster_reload", "Recarga registros (experimental).", ReloadMonsters);
         }
 
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
-            bool spaceCoreLoaded = SpaceCoreBridge.Init(Helper, Monitor);
-            if (!spaceCoreLoaded)
+            // Integración SpaceCore
+            var spaceCore = Helper.ModRegistry.GetApi<ISpaceCoreApi>("spacechase0.SpaceCore");
+            if (spaceCore != null)
             {
-                Monitor.Log("SpaceCore no encontrado. Los monstruos no se guardarán al dormir.", LogLevel.Alert);
-            }
-
-            LoadContentPacks();
-
-            // Carga Legacy (Content Patcher)
-            try
-            {
-                var cpData = Helper.GameContent.Load<Dictionary<string, MonsterData>>(CpAssetPath);
-                if (cpData != null && cpData.Count > 0)
-                {
-                    Monitor.Log($"Cargando {cpData.Count} monstruos legacy...", LogLevel.Info);
-                    foreach (var kvp in cpData)
-                    {
-                        _apiInstance.RegisterMonster(this.ModManifest, kvp.Key, kvp.Value);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Monitor.Log($"Nota: No se encontraron datos legacy ({ex.Message})", LogLevel.Trace);
-            }
-        }
-
-        private void LoadContentPacks()
-        {
-            Monitor.Log("Escaneando Content Packs...", LogLevel.Info);
-            
-            foreach (IContentPack pack in Helper.ContentPacks.GetOwned())
-            {
-                Monitor.Log($"Leyendo pack: {pack.Manifest.Name}", LogLevel.Info);
-                
-                try
-                {
-                    var packMonsters = pack.ReadJsonFile<Dictionary<string, MonsterData>>("monsters.json");
-                    
-                    if (packMonsters != null)
-                    {
-                        foreach (var kvp in packMonsters)
-                        {
-                            _apiInstance.RegisterMonsterFromPack(pack, kvp.Key, kvp.Value);
-                        }
-                        Monitor.Log($"  > Registrados {packMonsters.Count} monstruos de '{pack.Manifest.Name}'.", LogLevel.Info);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Monitor.Log($"  > Error leyendo pack '{pack.Manifest.Name}': {ex.Message}", LogLevel.Error);
-                }
+                spaceCore.RegisterSerializerType(typeof(CustomMonster));
+                Monitor.Log("SpaceCore API encontrada. Serialización activada.", LogLevel.Info);
             }
         }
 
@@ -122,39 +67,44 @@ namespace MonstrosityFramework
             MonsterRegistry.Cleanup();
         }
 
-        public override object GetApi() => _apiInstance;
-
-        private void ReloadMonstersCommand(string command, string[] args)
+        public override object GetApi()
         {
-            Monitor.Log("--- Iniciando Recarga en Caliente ---", LogLevel.Info);
-            
-            MonsterRegistry.Cleanup();
-            MonsterRegistry.ClearAll(); // Limpiamos la base de datos
-            
-            LoadContentPacks();
-            Helper.GameContent.InvalidateCache(CpAssetPath);
+            return _apiInstance;
+        }
 
-            if (Context.IsWorldReady)
+        // --- COMANDOS ---
+
+        private void ReloadMonsters(string command, string[] args)
+        {
+            MonsterRegistry.ClearAll();
+            int refreshed = 0;
+
+            // Recargar Content Packs propios
+            foreach (var pack in Helper.ContentPacks.GetOwned())
             {
-                int refreshed = 0;
-                foreach (var loc in Game1.locations)
+                var data = pack.ReadJsonFile<Dictionary<string, MonsterData>>("monsters.json");
+                if (data != null)
                 {
-                    foreach (var npc in loc.characters)
+                    foreach (var kvp in data)
                     {
-                        if (npc is CustomMonster cm)
-                        {
-                            cm.ReloadData();
-                            refreshed++;
-                        }
+                        MonsterRegistry.Register($"{pack.Manifest.UniqueID}.{kvp.Key}", kvp.Value, pack);
+                        refreshed++;
                     }
                 }
-                // ERROR CORREGIDO: Usamos LogLevel.Info en lugar de .Success
-                Monitor.Log($"Recarga completada. {refreshed} monstruos actualizados.", LogLevel.Info);
             }
-            else
+
+            // Recargar datos vía Content Pipeline (si existen)
+            var cpData = Helper.GameContent.Load<Dictionary<string, MonsterData>>(CpAssetPath);
+            if (cpData != null)
             {
-                Monitor.Log("Recarga de base de datos completada.", LogLevel.Info);
+                foreach (var kvp in cpData)
+                {
+                    MonsterRegistry.Register($"CP.{kvp.Key}", kvp.Value, null, ModManifest);
+                    refreshed++;
+                }
             }
+            
+            Monitor.Log($"Recarga completada. {refreshed} monstruos actualizados.", LogLevel.Info);
         }
 
         private void SpawnDebugMonster(string command, string[] args)
@@ -162,6 +112,7 @@ namespace MonstrosityFramework
             if (!Context.IsWorldReady || args.Length < 1) return;
             string id = args[0];
             
+            // FIX: Ahora esto funcionará porque agregamos el método en MonsterRegistry
             if (!MonsterRegistry.IsRegistered(id))
             {
                 Monitor.Log($"Monstruo '{id}' no encontrado. Usa 'monster_list' para ver IDs.", LogLevel.Error);

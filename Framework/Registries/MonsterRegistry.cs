@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using StardewModdingAPI;
-using MonstrosityFramework.Framework.Data; // Asegúrate de tener este using
+using MonstrosityFramework.Framework.Data; 
 
 namespace MonstrosityFramework.Framework.Registries
 {
@@ -8,7 +8,6 @@ namespace MonstrosityFramework.Framework.Registries
     {
         private static readonly Dictionary<string, RegisteredMonster> _registry = new();
 
-        // --- MÉTODO PRINCIPAL (Ya existía) ---
         public static void Register(string uniqueId, RegisteredMonster monster)
         {
             if (_registry.ContainsKey(uniqueId))
@@ -19,14 +18,10 @@ namespace MonstrosityFramework.Framework.Registries
             _registry[uniqueId] = monster;
         }
 
-        // --- NUEVA SOBRECARGA (Soluciona el error de 4 argumentos) ---
-        // Este método actúa como "fábrica", creando el RegisteredMonster por ti.
         public static void Register(string uniqueId, MonsterData data, IContentPack pack, IManifest manifest = null)
         {
-            // Creamos la instancia de RegisteredMonster aquí mismo
+            // Ahora sí existe este constructor en RegisteredMonster.cs
             var registeredMonster = new RegisteredMonster(data, pack, manifest);
-            
-            // Llamamos al método principal
             Register(uniqueId, registeredMonster);
         }
 
@@ -34,6 +29,13 @@ namespace MonstrosityFramework.Framework.Registries
         {
             if (string.IsNullOrEmpty(uniqueId)) return null;
             return _registry.TryGetValue(uniqueId, out var monster) ? monster : null;
+        }
+
+        // --- NUEVO MÉTODO (Soluciona el error CS0117) ---
+        public static bool IsRegistered(string uniqueId)
+        {
+            if (string.IsNullOrEmpty(uniqueId)) return false;
+            return _registry.ContainsKey(uniqueId);
         }
 
         public static IEnumerable<string> GetAllIds() => _registry.Keys;
