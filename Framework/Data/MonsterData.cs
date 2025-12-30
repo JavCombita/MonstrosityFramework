@@ -4,21 +4,22 @@ namespace MonstrosityFramework.Framework.Data
 {
     /// <summary>
     /// Define las estadísticas, apariencia y comportamiento de un monstruo personalizado.
-    /// Esto mapea directamente el archivo monsters.json del usuario.
+    /// Mapea directamente el archivo monsters.json del usuario.
     /// </summary>
     public class MonsterData
     {
         // --- Identidad Visual ---
         public string DisplayName { get; set; } = "Unknown Monster";
-		
-		/// <summary>
-        /// [OPCIONAL] Si usas Content Patcher, pon aquí el UniqueID de tu Content Pack.
-        /// Si lo dejas vacío, buscará en la carpeta del mod que registró el monstruo.
+        
+        /// <summary>
+        /// ID del Content Pack (Opcional). Útil para logs.
         /// </summary>
         public string ContentPackID { get; set; } = null;
         
         /// <summary>
-        /// Ruta relativa a la carpeta del mod hijo (ej: "assets/sprites/goblin.png").
+        /// Ruta de la textura. 
+        /// Si es un Content Pack: relativa a la carpeta del mod (ej: "assets/sprite.png").
+        /// Si es CP/Global: ruta completa del juego (ej: "Mods/Author/Texture").
         /// </summary>
         public string TexturePath { get; set; }
         
@@ -33,41 +34,25 @@ namespace MonstrosityFramework.Framework.Data
         public int Speed { get; set; } = 2;
 
         // --- Inteligencia Artificial ---
-        /// <summary>
-        /// Define qué lógica usará el monstruo. 
-        /// Valores soportados: "Default", "Stalker", "Shooter", "Tank".
-        /// </summary>
         public string BehaviorType { get; set; } = "Default";
 
-        // --- Loot ---
+        // --- Loot (Inicializado para evitar NullRef) ---
         public List<MonsterDropData> Drops { get; set; } = new();
 
-        // --- Reglas de Aparición ---
+        // --- Reglas de Aparición (Inicializado) ---
         public SpawnRules Spawn { get; set; } = new();
 
-        // --- Extensibilidad (Elite Feature) ---
-        /// <summary>
-        /// Datos arbitrarios para integración con otros mods (ej: Debuffs, Elementos).
-        /// </summary>
+        // --- Extensibilidad ---
         public Dictionary<string, string> CustomFields { get; set; } = new();
     }
 
     public class SpawnRules
     {
-        /// <summary>
-        /// Pisos de la mina donde puede aparecer.
-        /// </summary>
         public int MinMineLevel { get; set; } = -1;
         public int MaxMineLevel { get; set; } = -1;
-
-        /// <summary>
-        /// Probabilidad relativa de aparecer frente a otros monstruos.
-        /// </summary>
         public double SpawnWeight { get; set; } = 1.0;
-
-        /// <summary>
-        /// Lista de nombres de ubicaciones específicas (ej: "Farm", "Forest").
-        /// </summary>
-        public List<string> SpecificLocations { get; set; } = new();
+        
+        // Inicializado para seguridad
+        public List<string> SpecificLocations { get; set; } = new(); 
     }
 }

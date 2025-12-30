@@ -7,8 +7,7 @@ using StardewValley;
 namespace MonstrosityFramework.Framework.Registries
 {
     /// <summary>
-    /// Representa un monstruo cargado en memoria.
-    /// Gestiona la carga segura de texturas para evitar cuadros invisibles.
+    /// Wrapper que mantiene en memoria los datos y la textura cacheada de un monstruo.
     /// </summary>
     public class RegisteredMonster : IDisposable
     {
@@ -19,38 +18,40 @@ namespace MonstrosityFramework.Framework.Registries
         private Texture2D _textureCache;
         private bool _hasTriedLoading = false;
 
-        // Constructor Universal (usado por MonsterRegistry)
         public RegisteredMonster(MonsterData data, IContentPack pack, IManifest manifest)
         {
             Data = data;
             SourcePack = pack;
+            // Si no hay manifest explícito ni pack, asumimos que es huérfano (legacy CP)
             OwnerManifest = manifest ?? pack?.Manifest; 
         }
 
-        /// <summary>
-        /// Obtiene la textura. Usa el método nativo de SMAPI para máxima compatibilidad.
-        /// </summary>
         public Texture2D GetTexture()
         {
-            // 1. Si ya está en caché, devolverla
+            // 1. Caché
             if (_textureCache != null && !_textureCache.IsDisposed) return _textureCache;
-            
-            // 2. Si ya falló antes, no insistir (ahorra lag)
-            if (_hasTriedLoading) return null; 
+            if (_hasTriedLoading) return null; // Ya falló antes, no reintentar (evita lag)
 
             _hasTriedLoading = true;
 
+            // Validación básica
+            if (string.IsNullOrEmpty(Data.TexturePath))
+            {
+                ModEntry.StaticMonitor.Log($"[Texture] Advertencia: El monstruo '{Data.DisplayName}' no tiene 'TexturePath' definido.", LogLevel.Warn);
+                return null;
+            }
+
             try
             {
-                // CASO A: Content Pack (La forma correcta en SMAPI)
+                // CASO A: Content Pack (Mod propio)
                 if (SourcePack != null)
                 {
-                    // ModContent.Load maneja automáticamente rutas, mayúsculas y GPU.
                     _textureCache = SourcePack.ModContent.Load<Texture2D>(Data.TexturePath);
                 }
-                // CASO B: Legacy / Vanilla / Mods C# puros
+                // CASO B: Content Patcher / API Externa
                 else
                 {
+                    // Intentamos cargar como asset del juego
                     _textureCache = Game1.content.Load<Texture2D>(Data.TexturePath);
                 }
 
@@ -58,14 +59,14 @@ namespace MonstrosityFramework.Framework.Registries
             }
             catch (Exception ex)
             {
-                ModEntry.StaticMonitor.Log($"[Texture] ERROR FATAL: No se pudo cargar '{Data.TexturePath}'. Detalles: {ex.Message}", LogLevel.Error);
-                return null;
+                string source = SourcePack != null ? SourcePack.Manifest.Name : "Content Patcher / Global";
+                ModEntry.StaticMonitor.Log($"[Texture] Error cargando '{Data.TexturePath}' (Fuente: {source}).\nDetalles: {ex.Message}", LogLevel.Error);
+                return null; // CustomMonster manejará el fallback
             }
         }
 
         public void Dispose()
         {
-            // Liberamos la referencia. SMAPI gestiona la memoria real de las texturas cargadas.
             _textureCache = null;
             _hasTriedLoading = false;
         }
