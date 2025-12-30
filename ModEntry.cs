@@ -120,9 +120,9 @@ namespace MonstrosityFramework
         }
 
         public override object GetApi()
-        {
-            return _apiInstance;
-        }
+		{
+			return new MonstrosityApi(this.Monitor);
+		}
 
         // --- COMANDOS ---
 

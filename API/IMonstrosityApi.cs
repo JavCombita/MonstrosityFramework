@@ -1,35 +1,32 @@
 using Microsoft.Xna.Framework;
-using StardewModdingAPI;
-using StardewValley;
-using StardewValley.Monsters;
-using MonstrosityFramework.Framework.Data;
+using MonstrosityFramework.Entities.Behaviors;
 
 namespace MonstrosityFramework.API
 {
     public interface IMonstrosityApi
     {
         /// <summary>
-        /// Registra un monstruo manualmente (Legacy / C# directo).
+        /// Registra un nuevo monstruo en el sistema usando datos crudos (útil para Content Patcher o llamadas directas).
         /// </summary>
-        void RegisterMonster(IManifest ownerMod, string id, MonsterData data);
+        /// <param name="id">El ID único del monstruo (ej: "MiMod.RobotAsesino").</param>
+        /// <param name="data">Objeto MonsterData con las estadísticas y texturas.</param>
+        void RegisterMonster(string id, object data);
 
         /// <summary>
-        /// Registra un monstruo desde un Content Pack (Recomendado).
+        /// Genera e invoca un monstruo personalizado en el mundo.
         /// </summary>
-        void RegisterMonsterFromPack(IContentPack pack, string localId, MonsterData data);
+        /// <param name="id">El ID del monstruo a invocar.</param>
+        /// <param name="position">Coordenadas en el mapa (Tile o Pixeles, el spawn lo gestiona).</param>
+        /// <param name="locationName">Nombre del mapa (ej: "Farm"). Si es null, usa el mapa actual.</param>
+        /// <returns>La instancia del CustomMonster creado, o null si falló.</returns>
+        object SpawnMonster(string id, Vector2 position, string locationName = null);
 
         /// <summary>
-        /// Obtiene los datos de un monstruo registrado.
+        /// [ELITE FEATURE] Registra una nueva lógica de Inteligencia Artificial (Behavior).
+        /// Permite a otros mods añadir tipos de IA (ej: "Ninja", "Healer") que luego pueden usarse en los JSONs.
         /// </summary>
-        MonsterData GetMonsterData(string id);
-
-        /// <summary>
-        /// Spawnea un monstruo en el mundo de forma segura.
-        /// Devuelve la instancia del monstruo (como NPC) o null si falló.
-        /// </summary>
-        /// <param name="id">ID del monstruo (ej: "Author.Mod.Monster")</param>
-        /// <param name="location">Mapa donde aparecerá</param>
-        /// <param name="tile">Coordenadas en Tiles (x, y)</param>
-        Monster SpawnMonster(string id, GameLocation location, Vector2 tile);
+        /// <param name="behaviorId">El ID único para este comportamiento (ej: "mymod.ninja"). Insensible a mayúsculas.</param>
+        /// <param name="behavior">Una instancia de una clase que herede de MonsterBehavior.</param>
+        void RegisterBehavior(string behaviorId, MonsterBehavior behavior);
     }
 }
