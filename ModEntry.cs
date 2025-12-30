@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -163,7 +164,7 @@ namespace MonstrosityFramework
             Monitor.Log("=== Monstruos Registrados ===", LogLevel.Info);
             var ids = MonsterRegistry.GetAllIds();
             
-            if (ids.Count == 0) 
+            if (!ids.Any()) 
             {
                 Monitor.Log("(Ninguno)", LogLevel.Warn);
                 return;
@@ -173,7 +174,9 @@ namespace MonstrosityFramework
             {
                 var monster = MonsterRegistry.Get(id);
                 string source = monster.SourcePack != null ? $"[Pack: {monster.SourcePack.Manifest.Name}]" : "[CP/API]";
-                Monitor.Log($"- {id} | Fuente: {source} | IA: {monster.Data.BehaviorType ?? "Default"}", LogLevel.Info);
+                // Añadido null-check seguro para BehaviorType
+                string behavior = monster.Data?.BehaviorType ?? "Default";
+                Monitor.Log($"- {id} | Fuente: {source} | IA: {behavior}", LogLevel.Info);
             }
         }
     }
