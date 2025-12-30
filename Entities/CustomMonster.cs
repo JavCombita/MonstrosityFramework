@@ -18,8 +18,9 @@ namespace MonstrosityFramework.Entities
         public readonly NetString MonsterSourceId = new();
         
         private string _cachedBehavior = "default"; 
-
         private bool _hasLoadedData = false;
+        
+        // --- VARIABLES DE ESTADO (IA) ---
         private float _stateTimer = 0f;
         private int _aiState = 0; 
         private bool _isInvincibleOverride = false;
@@ -28,6 +29,9 @@ namespace MonstrosityFramework.Entities
         private bool _isMummyDown = false;
         private float _reviveTimer = 0f;
         private bool _isExploding = false;
+        
+        // --- DEBUG ---
+        private bool _textureChecked = false;
 
         public CustomMonster() : base() { EnsureFallbackTexture(); }
 
@@ -62,24 +66,33 @@ namespace MonstrosityFramework.Entities
             this.ExperienceGained = entry.Data.Exp;
             this.resilience.Value = entry.Data.Defense;
             
-            // FIX OPTIMIZACIÓN: Solo asignar si cambia para no ensuciar NetFields
+            // OPTIMIZACIÓN: Solo asignar si cambia
             if (this.Speed != entry.Data.Speed) this.Speed = entry.Data.Speed;
-
+            
+            // IMPORTANTE: Evita que rompan rocas al caminar
             this.willDestroyObjectsUnderfoot = false;
 
+            // Configurar flags de movimiento
             bool shouldGlide = _cachedBehavior == "bat" || _cachedBehavior == "ghost" || _cachedBehavior == "serpent" || _cachedBehavior == "slime" || _cachedBehavior == "fly";
             if (this.isGlider.Value != shouldGlide) this.isGlider.Value = shouldGlide;
 
             bool shouldFocus = _cachedBehavior == "stalker" || _cachedBehavior == "tank" || _cachedBehavior == "shooter" || _cachedBehavior == "mummy" || _cachedBehavior == "exploder" || _cachedBehavior == "rockcrab";
             if (this.focusedOnFarmers != shouldFocus) this.focusedOnFarmers = shouldFocus;
 
+            // Configurar Sprite
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             
             try
             {
                 Texture2D customTex = entry.GetTexture();
-                if (customTex != null) this.Sprite.spriteTexture = customTex;
-                else EnsureFallbackTexture();
+                if (customTex != null) 
+                {
+                    this.Sprite.spriteTexture = customTex;
+                }
+                else 
+                {
+                    EnsureFallbackTexture();
+                }
             }
             catch (Exception) { EnsureFallbackTexture(); }
             
@@ -89,7 +102,8 @@ namespace MonstrosityFramework.Entities
         private void EnsureFallbackTexture()
         {
             if (this.Sprite == null) this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
-            if (this.Sprite.spriteTexture == null)
+            
+            if (this.Sprite.spriteTexture == null || this.Sprite.spriteTexture.IsDisposed)
             {
                 try { this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute"); } catch { }
             }
@@ -102,11 +116,13 @@ namespace MonstrosityFramework.Entities
 
         public override int takeDamage(int damage, int xTrajectory, int yTrajectory, bool isBomb, double addedPrecision, Farmer who)
         {
+            // Lógica de Huida
             if (_cachedBehavior == "bat" || _cachedBehavior == "ghost") 
             {
                 _runAwayTimer = 2000f; 
             }
 
+            // Lógica RockCrab (Despertar)
             if (_cachedBehavior == "rockcrab" && _aiState == 0)
             {
                 Game1.playSound("hitRock");
@@ -116,6 +132,7 @@ namespace MonstrosityFramework.Entities
                 return 0; 
             }
 
+            // Lógica Momia (Caer)
             if (_cachedBehavior == "mummy")
             {
                 if (_isMummyDown)
@@ -129,7 +146,7 @@ namespace MonstrosityFramework.Entities
                     if (this.Health - actualDamage <= 0)
                     {
                         this.Health = 1; 
-                        _isMummyDown = true;
+                        _isMummyDown = true; 
                         _reviveTimer = 10000f; 
                         Game1.playSound("rockGolemHit");
                         this.Sprite.currentFrame = 4; 
@@ -159,30 +176,44 @@ namespace MonstrosityFramework.Entities
             return drops;
         }
 
-        // --- CORE LOOP PROTEGIDO ---
+        // --- CEREBRO CENTRAL (GAME LOOP) ---
         public override void behaviorAtGameTick(GameTime time)
         {
+            // 1. CHEQUEO VISUAL (Solo la primera vez)
+            if (!_textureChecked)
+            {
+                _textureChecked = true;
+                if (this.Sprite?.spriteTexture == null)
+                {
+                    ModEntry.StaticMonitor.Log($"[Visual] {MonsterSourceId.Value} no tiene textura. Usando fallback.", LogLevel.Warn);
+                    EnsureFallbackTexture();
+                }
+            }
+
+            // 2. RECARGA SI ES NECESARIO
             if (!_hasLoadedData || this.Sprite?.spriteTexture == null)
             {
                 if (!string.IsNullOrEmpty(MonsterSourceId.Value)) ReloadData();
                 if (this.Sprite?.spriteTexture == null) return;
             }
 
-            // OPTIMIZACIÓN: No asignar Speed si ya es la correcta
+            // 3. SINCRONIZAR VELOCIDAD
             int speed = MonsterRegistry.Get(MonsterSourceId.Value)?.Data.Speed ?? 2;
             if (this.Speed != speed) this.Speed = speed;
 
-            // SEGURIDAD: Verificar NaN antes de procesar nada
-            if (float.IsNaN(this.xVelocity) || float.IsNaN(this.yVelocity))
-            {
-                this.xVelocity = 0;
+            // 4. SEGURIDAD ANTI-CRASH (NaN Check)
+            // Si las coordenadas se corrompen, reseteamos al monstruo en lugar de congelar el juego.
+            if (float.IsNaN(this.Position.X) || float.IsNaN(this.Position.Y)) {
+                this.Position = Game1.player.Position + new Vector2(64, 64);
+                this.xVelocity = 0; 
                 this.yVelocity = 0;
             }
-            if (float.IsNaN(this.Position.X) || float.IsNaN(this.Position.Y))
-            {
-                this.Position = Game1.player.Position + new Vector2(64, 64); // Teleport de emergencia
+            if (float.IsNaN(this.xVelocity) || float.IsNaN(this.yVelocity)) {
+                this.xVelocity = 0; 
+                this.yVelocity = 0;
             }
 
+            // 5. EJECUTAR COMPORTAMIENTO
             switch (_cachedBehavior)
             {
                 case "slime":       BehaviorSlime(time, speed); break;
@@ -200,8 +231,10 @@ namespace MonstrosityFramework.Entities
             }
         }
 
+        // --- HELPERS SEGUROS ---
         private void SafeNormalize(ref Vector2 vector)
         {
+            // Evita división por cero
             if (vector.LengthSquared() > 0.0001f) vector.Normalize();
             else vector = Vector2.Zero;
         }
@@ -210,26 +243,23 @@ namespace MonstrosityFramework.Entities
 
         private void BehaviorBat(GameTime time, int speed)
         {
-            // OPTIMIZACIÓN: Solo activar glider si se desactivó por error
             if (!this.isGlider.Value) this.isGlider.Value = true;
             
             if (_runAwayTimer > 0)
             {
                 _runAwayTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 Vector2 away = this.Position - this.Player.Position;
-                SafeNormalize(ref away); 
+                SafeNormalize(ref away); // Seguro
                 this.xVelocity = away.X * speed * 1.5f;
                 this.yVelocity = away.Y * speed * 1.5f;
             }
             else if (withinPlayerThreshold(16)) 
             {
                 Vector2 trajectory = this.Player.Position - this.Position;
-                SafeNormalize(ref trajectory); 
+                SafeNormalize(ref trajectory); // Seguro
                 
-                // Física suavizada para evitar picos de CPU
+                // Física suavizada
                 float acceleration = 0.07f;
-                
-                // Limitar velocidad máxima para evitar NaN por overflow
                 float maxVel = speed * 2f;
 
                 if (this.xVelocity < trajectory.X * speed) this.xVelocity += acceleration;
@@ -238,7 +268,6 @@ namespace MonstrosityFramework.Entities
                 if (this.yVelocity < trajectory.Y * speed) this.yVelocity += acceleration;
                 else if (this.yVelocity > trajectory.Y * speed) this.yVelocity -= acceleration;
 
-                // Clamp manual
                 this.xVelocity = MathHelper.Clamp(this.xVelocity, -maxVel, maxVel);
                 this.yVelocity = MathHelper.Clamp(this.yVelocity, -maxVel, maxVel);
             }
@@ -250,11 +279,10 @@ namespace MonstrosityFramework.Entities
         private void BehaviorGhost(GameTime time, int speed)
         {
             if (!this.isGlider.Value) this.isGlider.Value = true;
-
             if (withinPlayerThreshold(20))
             {
                 Vector2 trajectory = this.Player.Position - this.Position;
-                SafeNormalize(ref trajectory); 
+                SafeNormalize(ref trajectory);
                 this.xVelocity = trajectory.X * (speed * 0.7f);
                 this.yVelocity = trajectory.Y * (speed * 0.7f);
             }
@@ -269,7 +297,6 @@ namespace MonstrosityFramework.Entities
         private void BehaviorSerpent(GameTime time, int speed)
         {
             if (!this.isGlider.Value) this.isGlider.Value = true;
-
             if (withinPlayerThreshold(20))
             {
                 Vector2 target = this.Player.Position;
@@ -300,7 +327,7 @@ namespace MonstrosityFramework.Entities
             {
                 this.IsWalkingTowardPlayer = false;
                 Vector2 away = this.Position - this.Player.Position;
-                SafeNormalize(ref away); 
+                SafeNormalize(ref away);
                 this.xVelocity = away.X * speed;
                 this.yVelocity = away.Y * speed;
                 this.MovePosition(time, Game1.viewport, Game1.currentLocation);
@@ -329,8 +356,6 @@ namespace MonstrosityFramework.Entities
                 }
             }
         }
-
-        // --- COMPORTAMIENTOS TERRESTRES ---
 
         private void BehaviorRockCrab(GameTime time, int speed)
         {
@@ -414,7 +439,6 @@ namespace MonstrosityFramework.Entities
             {
                 _stateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 this.shake(Game1.random.Next(1, 3)); 
-                
                 this.Sprite.currentFrame = 0; 
                 this.Sprite.StopAnimation();
 
@@ -455,18 +479,15 @@ namespace MonstrosityFramework.Entities
         private void BehaviorDuggy(GameTime time, int speed)
         {
             bool playerNear = withinPlayerThreshold(3);
-            if (_aiState == 0) // Bajo tierra
+            if (_aiState == 0) 
             {
-                this.IsInvisible = true;
-                this.HideShadow = true;
-                this.DamageToFarmer = 0; 
+                this.IsInvisible = true; this.HideShadow = true; this.DamageToFarmer = 0; 
                 if (!_isInvincibleOverride) _isInvincibleOverride = true; 
                 if (playerNear && _stateTimer <= 0) { Game1.playSound("dig"); _aiState = 1; _stateTimer = 2000f; }
             }
-            else // Arriba
+            else 
             {
-                this.IsInvisible = false;
-                this.HideShadow = false;
+                this.IsInvisible = false; this.HideShadow = false; 
                 if (_isInvincibleOverride) _isInvincibleOverride = false; 
                 var entry = MonsterRegistry.Get(MonsterSourceId.Value);
                 this.DamageToFarmer = entry?.Data.DamageToFarmer ?? 10;
@@ -486,7 +507,6 @@ namespace MonstrosityFramework.Entities
                 if (!_isInvincibleOverride) _isInvincibleOverride = true;
                 this.Sprite.currentFrame = 4;
                 this.Sprite.StopAnimation();
-                
                 _reviveTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (_reviveTimer <= 0)
                 {
@@ -538,16 +558,6 @@ namespace MonstrosityFramework.Entities
             if (!withinPlayerThreshold(10)) return;
             this.IsWalkingTowardPlayer = true;
             base.moveTowardPlayer(Math.Max(1, speed - 1));
-        }
-
-        private bool IsPlayerLookingAtMe()
-        {
-            Vector2 toMonster = this.Position - this.Player.Position;
-            int faceDir = this.Player.FacingDirection; 
-            if (Math.Abs(toMonster.X) > Math.Abs(toMonster.Y))
-                return (toMonster.X > 0 && faceDir == 1) || (toMonster.X < 0 && faceDir == 3);
-            else
-                return (toMonster.Y > 0 && faceDir == 2) || (toMonster.Y < 0 && faceDir == 0);
         }
     }
 }
