@@ -35,7 +35,7 @@ namespace MonstrosityFramework
             ModHelper = helper;
             StaticMonitor = Monitor;
             
-            Monitor.Log("Iniciando Monstrosity Framework (Elite Architecture v1.0)...", LogLevel.Info);
+            Monitor.Log("Iniciando Monstrosity Framework...", LogLevel.Info);
 
             // 2. Inicializar API (Seguro en Entry)
             _apiInstance = new MonstrosityApi(this.Monitor);
@@ -59,7 +59,7 @@ namespace MonstrosityFramework
             }
 
             // 5. Comandos de Consola
-            helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo custom.\nUso: monster_spawn <id>", SpawnDebugMonster);
+            helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo custom. Uso: monster_spawn <id>", SpawnDebugMonster);
             helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos registrados y su origen.", ListMonsters);
             helper.ConsoleCommands.Add("monster_reload", "Fuerza la recarga de Content Packs y datos.", ReloadMonsters);
         }
