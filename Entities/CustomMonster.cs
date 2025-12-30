@@ -66,7 +66,10 @@ namespace MonstrosityFramework.Entities
             this.resilience.Value = entry.Data.Defense;
             
             // FIX: Actualizar la velocidad BASE del juego también
-            this.Speed = entry.Data.Speed; 
+            this.Speed = entry.Data.Speed;
+			
+			// FIX: EVITAR QUE DESTRUYA ROCAS
+			this.willDestroyObjectsUnderfoot = false;
 
             if (_cachedBehavior == "bat" || _cachedBehavior == "ghost" || _cachedBehavior == "serpent" || _cachedBehavior == "slime" || _cachedBehavior == "fly") 
                 this.isGlider.Value = true;
