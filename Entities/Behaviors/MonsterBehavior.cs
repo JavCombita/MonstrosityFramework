@@ -16,9 +16,6 @@ namespace MonstrosityFramework.Entities.Behaviors
 
         // --- Helpers de Utilidad ---
 
-        /// <summary>
-        /// Obtiene los datos originales del JSON para leer configuraciones extra.
-        /// </summary>
         protected MonsterData GetData(CustomMonster monster)
         {
             if (string.IsNullOrEmpty(monster.MonsterSourceId.Value)) return null;
@@ -28,6 +25,20 @@ namespace MonstrosityFramework.Entities.Behaviors
         protected bool IsPlayerWithinRange(CustomMonster monster, float tiles)
         {
             return monster.withinPlayerThreshold((int)tiles);
+        }
+
+        /// <summary>
+        /// Obtiene el rango de visión definido en el JSON o un default.
+        /// Busca la clave "DetectionRange" en CustomFields.
+        /// </summary>
+        protected float GetVisionRange(CustomMonster monster, float defaultRange = 8f)
+        {
+            var data = GetData(monster);
+            if (data != null && data.CustomFields.TryGetValue("DetectionRange", out string rangeStr))
+            {
+                if (float.TryParse(rangeStr, out float parsed)) return parsed;
+            }
+            return defaultRange;
         }
 
         protected void MoveTowardPlayer(CustomMonster monster, int speed)

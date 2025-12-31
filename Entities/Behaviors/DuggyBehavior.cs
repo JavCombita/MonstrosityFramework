@@ -5,49 +5,59 @@ namespace MonstrosityFramework.Entities.Behaviors
 {
     public class DuggyBehavior : MonsterBehavior
     {
-        // 0=Bajo Tierra (Invisible/Ojos), 1=Saliendo, 2=Arriba/Atacando, 3=Entrando
+        // 0=Bajo Tierra, 1=Saliendo, 2=Arriba, 3=Entrando
 
         public override void Update(CustomMonster monster, GameTime time)
         {
-            // ESTADO 0: BAJO TIERRA (Frame 12)
+            float detection = GetVisionRange(monster, 4f); 
+
+            // ESTADO 0: BAJO TIERRA
             if (monster.AIState == 0) 
             {
-                monster.IsInvisible = false; 
-                monster.Sprite.currentFrame = 12; // Ojos/Tierra
-                monster.Sprite.StopAnimation();
-                
+                monster.IsInvisible = true; 
+                monster.HideShadow = true;
                 monster.DamageToFarmer = 0;
                 monster.IsInvincibleOverride = true;
                 monster.Halt(); 
 
-                // Detectar jugador
-                if (IsPlayerWithinRange(monster, 3))
+                // DETECCIÓN Y EMBOSCADA
+                if (IsPlayerWithinRange(monster, detection))
                 {
-                    monster.AIState = 1; // Saliendo
-                    monster.StateTimer = 400f; 
-                    Game1.playSound("dig");
+                    Vector2 targetPos = monster.Player.Position;
+                    
+                    // Verificar suelo válido antes de moverse
+                    if (Game1.currentLocation.isTileLocationTotallyClearAndPlaceable(targetPos))
+                    {
+                        monster.Position = targetPos; // Teleport bajo el jugador
+                        
+                        Game1.playSound("dig");
+                        monster.AIState = 1; 
+                        monster.StateTimer = 400f; 
+                        monster.IsInvisible = false;
+                        monster.HideShadow = false;
+                        monster.IsInvincibleOverride = false;
+                        
+                        var data = GetData(monster);
+                        monster.DamageToFarmer = data?.DamageToFarmer ?? 10;
+                        monster.Sprite.currentFrame = 0;
+                    }
                 }
             }
-            // ESTADO 1: SALIENDO (0 -> 3)
+            // ESTADO 1: SALIENDO
             else if (monster.AIState == 1)
             {
-                monster.IsInvincibleOverride = false;
                 monster.Sprite.Animate(time, 0, 4, 100f); 
-                
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
                     monster.AIState = 2; // Arriba
-                    monster.StateTimer = 2000f; // Tiempo arriba
-                    var data = GetData(monster);
-                    monster.DamageToFarmer = data?.DamageToFarmer ?? 10;
+                    monster.StateTimer = 2000f; 
                 }
             }
-            // ESTADO 2: ARRIBA / ATACANDO (4 -> 7)
+            // ESTADO 2: ARRIBA
             else if (monster.AIState == 2)
             {
                 monster.Sprite.Animate(time, 4, 4, 150f); 
-                
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
@@ -55,34 +65,30 @@ namespace MonstrosityFramework.Entities.Behaviors
                     monster.StateTimer = 400f;
                 }
             }
-            // ESTADO 3: ENTERRÁNDOSE (8 -> 11) + HOYO
+            // ESTADO 3: ENTERRÁNDOSE
             else if (monster.AIState == 3)
             {
                 monster.IsInvincibleOverride = true; 
-                monster.Sprite.Animate(time, 8, 3, 100f); 
+                monster.Sprite.Animate(time, 8, 4, 100f); 
 
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
-                    // FIN DE ANIMACIÓN: CREAR HOYO PERMANENTE
-                    // Usamos el frame 11 como textura del hoyo
+                    // Crear hoyo
                     Game1.currentLocation.temporarySprites.Add(new TemporaryAnimatedSprite(
                         monster.Sprite.textureName.Value, 
                         new Rectangle(11 * monster.Sprite.SpriteWidth, 0, monster.Sprite.SpriteWidth, monster.Sprite.SpriteHeight), 
                         monster.Position,
-                        false, 
-                        0f, 
-                        Color.White)
+                        false, 0f, Color.White)
                     {
-                        layerDepth = 0.0001f, // Muy al fondo
-                        interval = 1000f,     // Estático
+                        layerDepth = 0.0001f, 
+                        interval = 2000f, 
                         animationLength = 1,
-                        totalNumberOfLoops = 9999, // Dura "para siempre" hasta que se borre o tape
-                        id = monster.GetHashCode() // ID único
+                        id = monster.GetHashCode() // Fix: int (GetHashCode devuelve int)
                     });
 
                     monster.AIState = 0; 
-                    monster.StateTimer = 1000f; // Cooldown
+                    monster.StateTimer = 1000f; 
                 }
             }
         }

@@ -6,19 +6,26 @@ namespace MonstrosityFramework.Entities.Behaviors
 {
     public class MummyBehavior : MonsterBehavior
     {
-        // 0=Normal, 1=Derrumbándose, 2=Muerto(Suelo), 3=Reviviendo
+        // ESTADOS: 
+        // 0 = Normal (Caminar)
+        // 1 = Derrumbándose (Animación 16->19)
+        // 2 = En el suelo (Frame 19 estático)
+        // 3 = Reviviendo (Animación 19->16)
 
         public override void Update(CustomMonster monster, GameTime time)
         {
-            // ESTADO 0: NORMAL
+            float detection = GetVisionRange(monster, 10f); 
+
+            // --- ESTADO 0: NORMAL ---
             if (monster.AIState == 0)
             {
                 monster.IsInvincibleOverride = false;
-                if (IsPlayerWithinRange(monster, 16))
+                
+                if (IsPlayerWithinRange(monster, detection))
                 {
                     MoveTowardPlayer(monster, Math.Max(1, monster.Speed - 1));
                     
-                    // Animación direccional standard
+                    // Animación direccional standard (0-15)
                     int baseRowStart = 0;
                     switch(monster.FacingDirection)
                     {
@@ -29,12 +36,21 @@ namespace MonstrosityFramework.Entities.Behaviors
                     }
                     monster.Sprite.Animate(time, baseRowStart, 4, 150f);
                 }
+                else
+                {
+                    monster.Halt();
+                    monster.Sprite.currentFrame = monster.FacingDirection * 4;
+                }
             }
-            // ESTADO 1: DERRUMBÁNDOSE (16 -> 19)
+            
+            // --- ESTADO 1: DERRUMBÁNDOSE (16 -> 19) ---
             else if (monster.AIState == 1)
             {
                 monster.Halt();
-                // Interpolación manual de frames basada en el tiempo restante
+                monster.IsInvincibleOverride = true; // Invulnerable mientras cae
+                
+                // Calcular frame basado en el tiempo restante
+                // Duración caída: 400ms
                 float totalTime = 400f;
                 float progress = 1f - (monster.StateTimer / totalTime); // 0.0 a 1.0
                 
@@ -44,69 +60,74 @@ namespace MonstrosityFramework.Entities.Behaviors
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
-                    monster.AIState = 2; // Muerto en el suelo
-                    monster.StateTimer = 10000f; // 10s para revivir
+                    monster.AIState = 2; // Pasa a estar en el suelo
+                    monster.StateTimer = 10000f; // 10 segundos para revivir
                     monster.Sprite.currentFrame = 19; 
                 }
             }
-            // ESTADO 2: EN EL SUELO (Frame 19)
+            
+            // --- ESTADO 2: EN EL SUELO (Frame 19) ---
             else if (monster.AIState == 2)
             {
-                monster.IsInvincibleOverride = true; 
+                monster.IsInvincibleOverride = true; // Solo muere con bombas
                 monster.Sprite.currentFrame = 19;
                 
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer < 2000) monster.shake(1); // Avisar que revive
+                
+                // Vibrar un poco antes de revivir
+                if (monster.StateTimer < 2000) monster.shake(1);
 
                 if (monster.StateTimer <= 0)
                 {
-                    monster.AIState = 3; // Reviviendo
+                    monster.AIState = 3; // Empieza a revivir
                     monster.StateTimer = 400f;
                     Game1.playSound("shadowDie");
                 }
             }
-            // ESTADO 3: REVIVIENDO (19 -> 16)
+            
+            // --- ESTADO 3: REVIVIENDO (19 -> 16) ---
             else if (monster.AIState == 3)
             {
-                float totalTime = 400f;
-                float progress = monster.StateTimer / totalTime; // 1.0 a 0.0
+                float progress = monster.StateTimer / 400f; // 1.0 a 0.0
                 
-                int frame = 16 + (int)(progress * 3); // De 19 baja a 16
+                // Invertimos la animación: de 19 bajamos a 16
+                int frame = 16 + (int)(progress * 3); 
                 monster.Sprite.currentFrame = Math.Max(16, frame);
 
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
-                    monster.AIState = 0; // Listo
+                    monster.AIState = 0; // Listo para pelear
                     monster.Health = monster.MaxHealth;
                 }
             }
         }
-
-        public override int OnTakeDamage(CustomMonster monster, int damage, bool isBomb, Farmer who)
+        
+        public override int OnTakeDamage(CustomMonster m, int d, bool b, Farmer w)
         {
-            if (monster.AIState == 2 || monster.AIState == 3) 
-            {
-                if (isBomb)
-                {
-                    monster.Health = 0;
-                    return 9999; // Muerte definitiva
-                }
-                return 0;
+            // Si está en el suelo (Estados 1, 2, 3)
+            if (m.AIState >= 1) 
+            { 
+                if (b) // Solo muere con bombas
+                { 
+                    m.Health = 0; 
+                    return 999; 
+                } 
+                return 0; 
             }
-            else // De pie
+            
+            // Si está de pie
+            int actualDamage = Math.Max(1, d - m.resilience.Value);
+            if (m.Health - actualDamage <= 0)
             {
-                int actualDamage = Math.Max(1, damage - monster.resilience.Value);
-                if (monster.Health - actualDamage <= 0)
-                {
-                    monster.Health = monster.MaxHealth; 
-                    monster.AIState = 1; // Iniciar derrumbe
-                    monster.StateTimer = 400f; 
-                    Game1.playSound("rockGolemHit");
-                    return 0; // No muere, se cae
-                }
+                // INICIAR DERRUMBE
+                m.Health = m.MaxHealth; // Recuperar vida (falsa muerte)
+                m.AIState = 1; // Estado Caída
+                m.StateTimer = 400f; // Duración de la animación de caída
+                Game1.playSound("rockGolemHit");
+                return 0; 
             }
-            return damage;
+            return d;
         }
     }
 }

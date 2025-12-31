@@ -7,43 +7,21 @@ namespace MonstrosityFramework.Entities.Behaviors
     {
         public override void Update(CustomMonster monster, GameTime time)
         {
-            float detectionRange = 16f;
-            var data = GetData(monster);
-            if (data != null && data.CustomFields.TryGetValue("DetectionRange", out string rangeStr))
-            {
-                if (float.TryParse(rangeStr, out float parsed)) detectionRange = parsed;
-            }
+            float detection = GetVisionRange(monster, 16f);
 
-            if (!IsPlayerWithinRange(monster, detectionRange))
+            if (!IsPlayerWithinRange(monster, detection))
             {
                 monster.IsWalkingTowardPlayer = false;
                 monster.Halt();
-                // Frame Idle según dirección
-                int idleFrame = 0;
-                switch(monster.FacingDirection)
-                {
-                    case 2: idleFrame = 0; break; 
-                    case 1: idleFrame = 4; break;
-                    case 0: idleFrame = 8; break;
-                    case 3: idleFrame = 12; break;
-                }
-                monster.Sprite.currentFrame = idleFrame;
+                monster.Sprite.currentFrame = monster.FacingDirection * 4;
                 return;
             }
 
             monster.IsWalkingTowardPlayer = true;
             monster.moveTowardPlayer(monster.Speed);
 
-            // ANIMACIÓN DIRECCIONAL
-            int baseRowStart = 0;
-            switch(monster.FacingDirection)
-            {
-                case 2: baseRowStart = 0; break;  // Sur
-                case 1: baseRowStart = 4; break;  // Este
-                case 0: baseRowStart = 8; break;  // Norte
-                case 3: baseRowStart = 12; break; // Oeste
-            }
-            monster.Sprite.Animate(time, baseRowStart, 4, 150f);
+            int startFrame = monster.FacingDirection * 4;
+            monster.Sprite.Animate(time, startFrame, 4, 150f);
         }
     }
 }
