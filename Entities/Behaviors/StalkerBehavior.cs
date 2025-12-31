@@ -1,17 +1,12 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
-using System;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
     public class StalkerBehavior : MonsterBehavior
     {
-        // Comportamiento estándar de persecución (Shadow Brute / Golem)
-
         public override void Update(CustomMonster monster, GameTime time)
         {
-            // 1. Obtener rango de visión (Default: 16 tiles = 1024 pixels)
-            // Permitimos sobreescribir esto desde el JSON "CustomFields": { "DetectionRange": "30" }
             float detectionRange = 16f;
             var data = GetData(monster);
             if (data != null && data.CustomFields.TryGetValue("DetectionRange", out string rangeStr))
@@ -19,40 +14,36 @@ namespace MonstrosityFramework.Entities.Behaviors
                 if (float.TryParse(rangeStr, out float parsed)) detectionRange = parsed;
             }
 
-            // 2. Comprobar distancia
             if (!IsPlayerWithinRange(monster, detectionRange))
             {
-                // Si el jugador escapó, el monstruo se detiene y pierde el interés
                 monster.IsWalkingTowardPlayer = false;
                 monster.Halt();
+                // Frame Idle según dirección
+                int idleFrame = 0;
+                switch(monster.FacingDirection)
+                {
+                    case 2: idleFrame = 0; break; 
+                    case 1: idleFrame = 4; break;
+                    case 0: idleFrame = 8; break;
+                    case 3: idleFrame = 12; break;
+                }
+                monster.Sprite.currentFrame = idleFrame;
                 return;
             }
 
-            // 3. Persecución
-            // moveTowardPlayer se encarga del pathfinding básico de Stardew (evitar esquinas)
             monster.IsWalkingTowardPlayer = true;
             monster.moveTowardPlayer(monster.Speed);
 
-            // 4. Lógica de "Desatascar" (Opcional pero recomendada para mods)
-            // Si el monstruo está intentando moverse pero su posición no cambia, salta un poco
-            if (monster.IsWalkingTowardPlayer && (monster.xVelocity != 0 || monster.yVelocity != 0))
+            // ANIMACIÓN DIRECCIONAL
+            int baseRowStart = 0;
+            switch(monster.FacingDirection)
             {
-               // Aquí podrías añadir lógica anti-stuck si notas que se traban mucho,
-               // pero el método base moveTowardPlayer suele ser suficiente.
+                case 2: baseRowStart = 0; break;  // Sur
+                case 1: baseRowStart = 4; break;  // Este
+                case 0: baseRowStart = 8; break;  // Norte
+                case 3: baseRowStart = 12; break; // Oeste
             }
-        }
-
-        public override int OnTakeDamage(CustomMonster monster, int damage, bool isBomb, Farmer who)
-        {
-            // Reacción estándar: Al ser golpeado, se asegura de mirar al agresor
-            // y se activa la persecución incluso si estaba fuera de rango (aggro forzado)
-            
-            monster.IsWalkingTowardPlayer = true;
-            
-            // Efecto visual de retroceso (Knockback) ya lo maneja la clase base Monster,
-            // pero aquí podríamos añadir sonidos extra o efectos de partículas si quisiéramos.
-            
-            return damage;
+            monster.Sprite.Animate(time, baseRowStart, 4, 150f);
         }
     }
 }

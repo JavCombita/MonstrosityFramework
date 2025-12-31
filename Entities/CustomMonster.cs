@@ -17,10 +17,12 @@ namespace MonstrosityFramework.Entities
         // --- SINCRONIZACIÓN DE RED ---
         public readonly NetString MonsterSourceId = new();
         
-        // --- ESTADO PÚBLICO (Para Behaviors) ---
+        // --- ESTADO PÚBLICO (Vital para los Behaviors) ---
         [XmlIgnore] public float StateTimer = 0f;
         [XmlIgnore] public int AIState = 0; 
         [XmlIgnore] public bool IsInvincibleOverride = false;
+        
+        // Variables auxiliares genéricas (por si algún behavior complejo las necesita)
         [XmlIgnore] public float GenericTimer = 0f; 
         [XmlIgnore] public bool GenericFlag = false;
         
@@ -32,10 +34,7 @@ namespace MonstrosityFramework.Entities
         private bool _hasLoadedData = false;
         private bool _textureChecked = false;
 
-        public CustomMonster() : base() 
-        { 
-            EnsureFallbackTexture(); 
-        }
+        public CustomMonster() : base() { EnsureFallbackTexture(); }
 
         public CustomMonster(string uniqueId, Vector2 position) : base()
         {
@@ -60,11 +59,7 @@ namespace MonstrosityFramework.Entities
             if (string.IsNullOrEmpty(MonsterSourceId.Value)) return;
 
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
-            if (entry == null) 
-            { 
-                EnsureFallbackTexture(); 
-                return; 
-            }
+            if (entry == null) { EnsureFallbackTexture(); return; }
 
             // 1. ASIGNAR ESTRATEGIA (Behavior)
             _cachedBehaviorId = (entry.Data.BehaviorType ?? "Default").ToLowerInvariant();
@@ -73,14 +68,16 @@ namespace MonstrosityFramework.Entities
             // 2. STATS
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
+            // Solo curar si es necesario (evita resetear HP en combate multiplayer si recarga)
             if (this.Health > this.MaxHealth || this.Health <= 0) this.Health = this.MaxHealth; 
+            
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             this.resilience.Value = entry.Data.Defense;
             if (this.Speed != entry.Data.Speed) this.Speed = entry.Data.Speed;
             this.willDestroyObjectsUnderfoot = false;
 
-            // 3. SPRITE (Aquí estaba el error de texturas cortadas)
+            // 3. SPRITE
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             try
             {
@@ -96,32 +93,31 @@ namespace MonstrosityFramework.Entities
             }
             catch (Exception) { EnsureFallbackTexture(); }
             
-            // --- FIX VITAL #1: TEXTURA INCOMPLETA ---
-            // Forzamos al sprite a reconocer su tamaño real inmediatamente, 
-            // no esperar a que el Behavior corra 'Animate'.
+            // --- FIX GRÁFICO #1: Inicialización Correcta ---
+            // Esto evita que el sprite se vea "recortado" o invisible hasta que se mueva.
             this.Sprite.currentFrame = 0;
             this.Sprite.UpdateSourceRect(); 
-            // ----------------------------------------
 
             this.HideShadow = false;
             
-            // Reset estado IA
+            // Reiniciar estado IA
             this.AIState = 0;
             this.StateTimer = 0;
         }
 
         public override void behaviorAtGameTick(GameTime time)
         {
-            // Chequeos de seguridad
+            // Seguridad de Textura
             if (!_textureChecked)
             {
                 _textureChecked = true;
                 if (this.Sprite?.spriteTexture == null) EnsureFallbackTexture();
             }
 
+            // Seguridad de Datos
             if (!_hasLoadedData) ReloadData();
 
-            // NaN Safety Check
+            // Seguridad de Posición (NaN fix)
             if (float.IsNaN(this.Position.X) || float.IsNaN(this.Position.Y)) {
                 this.Position = Game1.player.Position + new Vector2(64, 64);
                 this.xVelocity = 0; this.yVelocity = 0;
@@ -138,47 +134,24 @@ namespace MonstrosityFramework.Entities
             }
         }
 
-        // --- FIX VITAL #2: DIBUJADO DE MURCIÉLAGOS ---
+        // --- FIX GRÁFICO #2: Dibujado Simplificado ---
         public override void draw(SpriteBatch b)
         {
-            // Si es volador (Bat, Ghost), manejamos el dibujado para asegurar que se vea
-            if (this.isGlider.Value)
+            // Si es un volador (Bat, Ghost, etc.), ajustamos el LayerDepth.
+            if (this.isGlider.Value && !this.IsInvisible)
             {
-                // 1. Dibujar Sombra (Manual, para asegurar que esté en el suelo)
-                // Usamos lógica similar a vanilla pero forzando que se dibuje
-                if (!this.IsInvisible && !this.HideShadow)
-                {
-                    b.Draw(Game1.shadowTexture, 
-                        Game1.GlobalToLocal(Game1.viewport, this.Position + new Vector2(32f, 24f)), 
-                        Game1.shadowTexture.Bounds, 
-                        Color.White, 
-                        0f, 
-                        new Vector2(Game1.shadowTexture.Bounds.Center.X, Game1.shadowTexture.Bounds.Center.Y), 
-                        4f + (float)this.yJumpOffset / 40f, 
-                        SpriteEffects.None, 
-                        (float)(this.Position.Y - 8.0) / 10000f);
-                }
+                // Calculamos un LayerDepth alto (+640f) para asegurar que se dibuje ENCIMA
+                // de las paredes de la mina y no parezca que está "dentro" del muro.
+                float layerDepth = (this.Position.Y + 640f) / 10000f;
 
-                // 2. Dibujar Sprite (Flotando)
-                if (!this.IsInvisible)
-                {
-                    // Calculamos una "altura visual" extra. Los murciélagos vanilla usan yJumpOffset o un offset hardcodeado.
-                    // Aquí simplemente dibujamos el sprite un poco más arriba visualmente (-32px) si queremos efecto vuelo,
-                    // O confiamos en que el sprite sheet ya tiene el espacio.
-                    // Lo importante es el LayerDepth: (Position.Y + 640) asegura que se dibuje ENCIMA de paredes bajas.
-                    
-                    Vector2 drawPos = this.Position;
-                    // Ajuste visual para centrar sprites voladores si es necesario
-                    drawPos.Y -= 32f; 
-
-                    this.Sprite.draw(b, 
-                        Game1.GlobalToLocal(Game1.viewport, drawPos), 
-                        (float)(this.Position.Y + 640) / 10000f); // Capa alta para volar sobre cosas
-                }
+                // Dibujamos el sprite en su posición real.
+                // Eliminamos los offsets manuales (-32f) y la sombra dibujada a mano
+                // para evitar conflictos visuales.
+                this.Sprite.draw(b, Game1.GlobalToLocal(Game1.viewport, this.Position), layerDepth);
             }
             else
             {
-                // Comportamiento estándar para monstruos terrestres
+                // Para monstruos terrestres, usamos el método vanilla que maneja sombras y Z-order correctamente.
                 base.draw(b);
             }
         }
@@ -188,7 +161,7 @@ namespace MonstrosityFramework.Entities
             if (_currentBehavior != null)
             {
                 int modifiedDamage = _currentBehavior.OnTakeDamage(this, damage, isBomb, who);
-                if (modifiedDamage <= 0 && damage > 0) return 0;
+                if (modifiedDamage <= 0 && damage > 0) return 0; // Daño anulado por Behavior
                 damage = modifiedDamage;
             }
 
