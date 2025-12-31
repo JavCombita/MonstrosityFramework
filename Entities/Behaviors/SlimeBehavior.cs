@@ -18,7 +18,7 @@ namespace MonstrosityFramework.Entities.Behaviors
             if (monster.AIState == 0)
             {
                 monster.isGlider.Value = false;
-                monster.Rotation = 0f;
+                monster.rotation = 0f;
 
                 // 1. GESTIÓN DE ANIMACIÓN "VIVA"
                 // Usamos GenericTimer para decidir cuándo cambiar de "variación de movimiento"

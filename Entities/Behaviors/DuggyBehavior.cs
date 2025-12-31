@@ -78,7 +78,7 @@ namespace MonstrosityFramework.Entities.Behaviors
                         interval = 1000f,     // Estático
                         animationLength = 1,
                         totalNumberOfLoops = 9999, // Dura "para siempre" hasta que se borre o tape
-                        id = (float)monster.GetHashCode() // ID único
+                        id = monster.GetHashCode() // ID único
                     });
 
                     monster.AIState = 0; 

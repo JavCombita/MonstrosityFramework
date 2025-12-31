@@ -100,7 +100,7 @@ namespace MonstrosityFramework.Entities.Behaviors
                 Game1.playSound("breakingGlass");
                 monster.AIState = 3; // Huye
                 monster.IsInvincibleOverride = false;
-                monster.Defense = 0; // Sin defensa
+                monster.resilience.Value = 0; // Sin defensa
                 return damage; // Recibe el daño de la bomba
             }
 
