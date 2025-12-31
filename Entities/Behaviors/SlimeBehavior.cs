@@ -16,9 +16,8 @@ namespace MonstrosityFramework.Entities.Behaviors
             if (monster.AIState == 0)
             {
                 monster.isGlider.Value = false;
-                monster.rotation = 0f; // Fix: minúscula
+                monster.rotation = 0f;
 
-                // Animación variante
                 monster.GenericTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.GenericTimer <= 0)
                 {
@@ -27,7 +26,6 @@ namespace MonstrosityFramework.Entities.Behaviors
                 }
                 monster.Sprite.Animate(time, monster.FacingDirection * 4, 4, 200f); 
 
-                // Drift
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
@@ -35,7 +33,6 @@ namespace MonstrosityFramework.Entities.Behaviors
                     
                     if (IsPlayerWithinRange(monster, vision))
                     {
-                        // Drift hacia el jugador
                         Vector2 trajectory = monster.Player.Position - monster.Position;
                         if (trajectory != Vector2.Zero) trajectory.Normalize();
                         monster.xVelocity = trajectory.X * (monster.Speed * 0.5f); 
@@ -43,7 +40,6 @@ namespace MonstrosityFramework.Entities.Behaviors
                     }
                     else
                     {
-                        // Random drift
                         monster.xVelocity = (float)(Game1.random.NextDouble() - 0.5) * monster.Speed;
                         monster.yVelocity = (float)(Game1.random.NextDouble() - 0.5) * monster.Speed;
                     }
@@ -52,7 +48,6 @@ namespace MonstrosityFramework.Entities.Behaviors
                 monster.Position += new Vector2(monster.xVelocity, monster.yVelocity);
                 CheckMapBounds(monster);
 
-                // Decisión de salto
                 if (IsPlayerWithinRange(monster, vision) && Game1.random.NextDouble() < 0.03)
                 {
                     monster.AIState = 1; 
@@ -92,9 +87,8 @@ namespace MonstrosityFramework.Entities.Behaviors
             {
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 
-                // Aplicar movimiento explícito
-                monster.Position.X += monster.xVelocity;
-                monster.Position.Y += monster.yVelocity;
+                // FIX CS1612: Modificar Position asignando un nuevo Vector2
+                monster.Position += new Vector2(monster.xVelocity, monster.yVelocity);
                 
                 monster.Sprite.Animate(time, 18, 2, 100f); 
 
@@ -106,8 +100,9 @@ namespace MonstrosityFramework.Entities.Behaviors
                     return;
                 }
 
-                // Colisión Paredes
-                if (!Game1.currentLocation.isTilePassable(monster.nextPosition(monster.GetBoundingBox().Center.X, monster.GetBoundingBox().Center.Y), Game1.viewport))
+                // FIX CS1501: Detección de Colisión con Paredes usando método estándar
+                // Si isCollidingPosition devuelve true, chocó contra algo
+                if (Game1.currentLocation.isCollidingPosition(monster.GetBoundingBox(), Game1.viewport, false, 0, false, monster))
                 {
                     Land(monster, 500f);
                 }

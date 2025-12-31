@@ -24,9 +24,11 @@ namespace MonstrosityFramework.Entities.Behaviors
                 if (IsPlayerWithinRange(monster, detection))
                 {
                     Vector2 targetPos = monster.Player.Position;
+                    // FIX: Convertir pixeles a coordenadas de Tile para verificar
+                    Vector2 targetTile = new Vector2((int)targetPos.X / 64, (int)targetPos.Y / 64);
                     
-                    // Verificar suelo válido antes de moverse
-                    if (Game1.currentLocation.isTileLocationTotallyClearAndPlaceable(targetPos))
+                    // FIX: Usar CanSpawnCharacterHere (Seguro y existente)
+                    if (Game1.currentLocation.CanSpawnCharacterHere(targetTile))
                     {
                         monster.Position = targetPos; // Teleport bajo el jugador
                         
@@ -74,7 +76,6 @@ namespace MonstrosityFramework.Entities.Behaviors
                 monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
                 if (monster.StateTimer <= 0)
                 {
-                    // Crear hoyo
                     Game1.currentLocation.temporarySprites.Add(new TemporaryAnimatedSprite(
                         monster.Sprite.textureName.Value, 
                         new Rectangle(11 * monster.Sprite.SpriteWidth, 0, monster.Sprite.SpriteWidth, monster.Sprite.SpriteHeight), 
@@ -84,7 +85,7 @@ namespace MonstrosityFramework.Entities.Behaviors
                         layerDepth = 0.0001f, 
                         interval = 2000f, 
                         animationLength = 1,
-                        id = monster.GetHashCode() // Fix: int (GetHashCode devuelve int)
+                        id = monster.GetHashCode() 
                     });
 
                     monster.AIState = 0; 
