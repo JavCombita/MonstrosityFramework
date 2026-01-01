@@ -6,27 +6,28 @@ namespace MonstrosityFramework.API
     public interface IMonstrosityApi
     {
         /// <summary>
-        /// Registra un nuevo monstruo en el sistema usando datos crudos (útil para Content Patcher o llamadas directas).
+        /// Registers a new monster into the framework using raw data objects.
+        /// Useful for Content Patcher integrations or direct code calls.
         /// </summary>
-        /// <param name="id">El ID único del monstruo (ej: "MiMod.RobotAsesino").</param>
-        /// <param name="data">Objeto MonsterData con las estadísticas y texturas.</param>
+        /// <param name="id">The unique ID for the monster (e.g., "MyMod.KillerRobot").</param>
+        /// <param name="data">The MonsterData object containing stats and texture paths.</param>
         void RegisterMonster(string id, object data);
 
         /// <summary>
-        /// Genera e invoca un monstruo personalizado en el mundo.
+        /// Spawns and adds a custom monster instance to the game world.
         /// </summary>
-        /// <param name="id">El ID del monstruo a invocar.</param>
-        /// <param name="position">Coordenadas en el mapa (Tile o Pixeles, el spawn lo gestiona).</param>
-        /// <param name="locationName">Nombre del mapa (ej: "Farm"). Si es null, usa el mapa actual.</param>
-        /// <returns>La instancia del CustomMonster creado, o null si falló.</returns>
+        /// <param name="id">The ID of the registered monster to spawn.</param>
+        /// <param name="position">The coordinates (in pixels) for the spawn. If using Tile coordinates, multiply by 64f.</param>
+        /// <param name="locationName">The name of the location (e.g., "Farm", "UndergroundMine"). If null, uses the player's current location.</param>
+        /// <returns>The spawned CustomMonster instance, or null if the operation failed.</returns>
         object SpawnMonster(string id, Vector2 position, string locationName = null);
 
         /// <summary>
-        /// [ELITE FEATURE] Registra una nueva lógica de Inteligencia Artificial (Behavior).
-        /// Permite a otros mods añadir tipos de IA (ej: "Ninja", "Healer") que luego pueden usarse en los JSONs.
+        /// [ELITE FEATURE] Registers a new Artificial Intelligence (Behavior) logic.
+        /// Allows other mods to add unique AI types (e.g., "Ninja", "Healer") that can then be referenced in JSON files.
         /// </summary>
-        /// <param name="behaviorId">El ID único para este comportamiento (ej: "mymod.ninja"). Insensible a mayúsculas.</param>
-        /// <param name="behavior">Una instancia de una clase que herede de MonsterBehavior.</param>
+        /// <param name="behaviorId">The unique ID for this behavior (e.g., "mymod.ninja"). Case-insensitive.</param>
+        /// <param name="behavior">An instance of a class inheriting from MonsterBehavior.</param>
         void RegisterBehavior(string behaviorId, MonsterBehavior behavior);
     }
 }
