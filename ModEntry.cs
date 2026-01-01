@@ -13,7 +13,6 @@ using MonstrosityFramework.Entities;
 using MonstrosityFramework.Integrations;
 using MonstrosityFramework.Patches;
 using MonstrosityFramework.Framework.Data;
-using SpaceCore; // Asegúrate de tener referenciado SpaceCore o usar Reflection si es soft-dependency
 
 namespace MonstrosityFramework
 {
