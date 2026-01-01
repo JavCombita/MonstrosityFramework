@@ -8,17 +8,19 @@ namespace MonstrosityFramework.Entities.Behaviors
         private static readonly MonsterBehavior _defaultBehavior = new StalkerBehavior();
 
         static BehaviorFactory()
-		{
-			Register("default", _defaultBehavior);
-			Register("stalker", new StalkerBehavior());
-			Register("slime", new SlimeBehavior());
-			Register("bat", new BatBehavior());
-			Register("ghost", new BatBehavior()); // Reusamos Bat por ahora
-			Register("rockcrab", new RockCrabBehavior());
-			Register("mummy", new MummyBehavior());
-			Register("shooter", new ShooterBehavior());
-			Register("duggy", new DuggyBehavior());
-		}
+        {
+            // Registro de Behaviors Vanilla
+            Register("default", _defaultBehavior);
+            Register("stalker", new StalkerBehavior()); // IA Básica
+            
+            Register("bat", new BatBehavior());         // Vuelo, Espiral, Lunge
+            Register("ghost", new GhostBehavior());     // Vuelo lento, Luz, Oscilación
+            Register("slime", new SlimeBehavior());     // Salto, Reproducción
+            Register("rockcrab", new RockCrabBehavior()); // Camuflaje, Caparazón
+            Register("duggy", new DuggyBehavior());     // Ataque subterráneo
+            Register("shooter", new ShooterBehavior()); // Proyectiles
+            Register("mummy", new MummyBehavior());     // Revivir, Crusader check
+        }
 
         public static void Register(string id, MonsterBehavior behavior)
         {
