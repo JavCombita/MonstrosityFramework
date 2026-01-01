@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MonstrosityFramework.Entities;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
