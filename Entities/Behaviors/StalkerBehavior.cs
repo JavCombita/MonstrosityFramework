@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
+using MonstrosityFramework.Entities;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
