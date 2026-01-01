@@ -1,133 +1,117 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
+using StardewValley.Enchantments;
+using StardewValley.Tools;
 using System;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
     public class MummyBehavior : MonsterBehavior
     {
-        // ESTADOS: 
-        // 0 = Normal (Caminar)
-        // 1 = Derrumbándose (Animación 16->19)
-        // 2 = En el suelo (Frame 19 estático)
-        // 3 = Reviviendo (Animación 19->16)
+        // NetState: 0 = Viva, 1 = Arrugada (Muerta temporalmente)
+        // NetTimer: Tiempo para revivir (sincronizado)
+
+        public override void Initialize(CustomMonster monster)
+        {
+            monster.NetState.Value = 0;
+            monster.Sprite.currentFrame = 0;
+            monster.DamageToFarmer = GetData(monster)?.DamageToFarmer ?? 20;
+        }
 
         public override void Update(CustomMonster monster, GameTime time)
         {
-            float detection = GetVisionRange(monster, 10f); 
-
-            // --- ESTADO 0: NORMAL ---
-            if (monster.AIState == 0)
+            // --- ESTADO: ARRUGADA (CRUMPLED) ---
+            if (monster.NetState.Value == 1) 
             {
-                monster.IsInvincibleOverride = false;
-                
-                if (IsPlayerWithinRange(monster, detection))
+                monster.NetTimer.Value -= time.ElapsedGameTime.Milliseconds;
+                monster.IsWalkingTowardPlayer = false;
+                monster.Halt();
+
+                // Vibrar antes de revivir (< 2 seg)
+                if (monster.NetTimer.Value < 2000) 
+                    monster.shake((int)monster.NetTimer.Value);
+
+                // REVIVIR
+                if (monster.NetTimer.Value <= 0)
                 {
-                    MoveTowardPlayer(monster, Math.Max(1, monster.Speed - 1));
-                    
-                    // Animación direccional standard (0-15)
-                    int baseRowStart = 0;
-                    switch(monster.FacingDirection)
-                    {
-                        case 2: baseRowStart = 0; break; 
-                        case 1: baseRowStart = 4; break; 
-                        case 0: baseRowStart = 8; break; 
-                        case 3: baseRowStart = 12; break; 
-                    }
-                    monster.Sprite.Animate(time, baseRowStart, 4, 150f);
+                    monster.NetState.Value = 0;
+                    monster.Health = monster.MaxHealth; // Restaurar vida real
+                    monster.currentLocation.localSound("monsterdead"); 
+                    monster.Sprite.currentFrame = 0; 
+                    monster.IsWalkingTowardPlayer = true;
                 }
                 else
                 {
-                    monster.Halt();
-                    monster.Sprite.currentFrame = monster.FacingDirection * 4;
-                }
-            }
-            
-            // --- ESTADO 1: DERRUMBÁNDOSE (16 -> 19) ---
-            else if (monster.AIState == 1)
-            {
-                monster.Halt();
-                monster.IsInvincibleOverride = true; // Invulnerable mientras cae
-                
-                // Calcular frame basado en el tiempo restante
-                // Duración caída: 400ms
-                float totalTime = 400f;
-                float progress = 1f - (monster.StateTimer / totalTime); // 0.0 a 1.0
-                
-                int frame = 16 + (int)(progress * 3); // 16, 17, 18, 19
-                monster.Sprite.currentFrame = Math.Min(19, frame);
-
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
-                {
-                    monster.AIState = 2; // Pasa a estar en el suelo
-                    monster.StateTimer = 10000f; // 10 segundos para revivir
+                    // Mantener frame de "pila de trapos"
                     monster.Sprite.currentFrame = 19; 
                 }
             }
-            
-            // --- ESTADO 2: EN EL SUELO (Frame 19) ---
-            else if (monster.AIState == 2)
+            // --- ESTADO: VIVA ---
+            else 
             {
-                monster.IsInvincibleOverride = true; // Solo muere con bombas
-                monster.Sprite.currentFrame = 19;
+                monster.IsWalkingTowardPlayer = true;
+                monster.moveTowardPlayerThreshold.Value = 16;
                 
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                
-                // Vibrar un poco antes de revivir
-                if (monster.StateTimer < 2000) monster.shake(1);
-
-                if (monster.StateTimer <= 0)
-                {
-                    monster.AIState = 3; // Empieza a revivir
-                    monster.StateTimer = 400f;
-                    Game1.playSound("shadowDie");
-                }
-            }
-            
-            // --- ESTADO 3: REVIVIENDO (19 -> 16) ---
-            else if (monster.AIState == 3)
-            {
-                float progress = monster.StateTimer / 400f; // 1.0 a 0.0
-                
-                // Invertimos la animación: de 19 bajamos a 16
-                int frame = 16 + (int)(progress * 3); 
-                monster.Sprite.currentFrame = Math.Max(16, frame);
-
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
-                {
-                    monster.AIState = 0; // Listo para pelear
-                    monster.Health = monster.MaxHealth;
-                }
+                if (monster.isMoving()) 
+                    monster.Sprite.AnimateDown(time);
             }
         }
-        
-        public override int OnTakeDamage(CustomMonster m, int d, bool b, Farmer w)
+
+        public override int OnTakeDamage(CustomMonster monster, int damage, bool isBomb, Farmer who)
         {
-            // Si está en el suelo (Estados 1, 2, 3)
-            if (m.AIState >= 1) 
-            { 
-                if (b) // Solo muere con bombas
-                { 
-                    m.Health = 0; 
-                    return 999; 
-                } 
-                return 0; 
-            }
-            
-            // Si está de pie
-            int actualDamage = Math.Max(1, d - m.resilience.Value);
-            if (m.Health - actualDamage <= 0)
+            // A) Si ya está Arrugada
+            if (monster.NetState.Value == 1)
             {
-                // INICIAR DERRUMBE
-                m.Health = m.MaxHealth; // Recuperar vida (falsa muerte)
-                m.AIState = 1; // Estado Caída
-                m.StateTimer = 400f; // Duración de la animación de caída
-                Game1.playSound("rockGolemHit");
-                return 0; 
+                if (isBomb)
+                {
+                    // La bomba mata definitivamente
+                    monster.Health = 0; 
+                    monster.currentLocation.playSound("ghost");
+                    Utility.makeTemporarySpriteJuicier(new TemporaryAnimatedSprite(44, monster.Position, Color.BlueViolet, 10) { holdLastFrame = true }, monster.currentLocation);
+                    return 999; // Daño letal
+                }
+                return -1; // Invulnerable a armas mientras está en el suelo
             }
-            return d;
+
+            // B) Si está Viva
+            int actualDamage = Math.Max(1, damage - (int)monster.resilience.Value);
+            int projectedHealth = monster.Health - actualDamage;
+
+            monster.currentLocation.playSound("shadowHit");
+            monster.currentLocation.playSound("skeletonStep");
+
+            // Si el daño es fatal...
+            if (projectedHealth <= 0)
+            {
+                // Verificar Encantamiento Cruzado (Crusader)
+                bool hasCrusader = false;
+                if (who.CurrentTool is MeleeWeapon weapon)
+                {
+                    foreach(var ench in weapon.enchantments)
+                    {
+                        if (ench is CrusaderEnchantment) hasCrusader = true;
+                    }
+                }
+
+                // SI NO es bomba Y NO tiene Crusader -> Se Arruga (No muere)
+                if (!isBomb && !hasCrusader)
+                {
+                    monster.NetState.Value = 1;
+                    
+                    // Tiempo de resurrección configurable (Default 10s)
+                    monster.NetTimer.Value = GetCustomInt(monster, "RevivalTime", 10000); 
+                    
+                    monster.Health = monster.MaxHealth; // Reset HP (visual)
+                    monster.currentLocation.localSound("skeletonDie");
+                    monster.Sprite.currentFrame = 19;
+                    
+                    return 0; // Anulamos el daño letal del juego
+                }
+                
+                // Si es bomba o Crusader, muere de verdad (dejar pasar el daño normal)
+            }
+
+            return actualDamage;
         }
     }
 }
