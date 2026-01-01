@@ -13,6 +13,7 @@ using MonstrosityFramework.Entities;
 using MonstrosityFramework.Integrations;
 using MonstrosityFramework.Patches;
 using MonstrosityFramework.Framework.Data;
+using SpaceCore; // Asegúrate de tener referenciado SpaceCore o usar Reflection si es soft-dependency
 
 namespace MonstrosityFramework
 {
@@ -35,18 +36,17 @@ namespace MonstrosityFramework
             ModHelper = helper;
             StaticMonitor = Monitor;
             
-            Monitor.Log("Iniciando Monstrosity Framework...", LogLevel.Info);
+            Monitor.Log("Iniciando Monstrosity Framework (Elite Edition)...", LogLevel.Info);
 
             // 2. Inicializar API (Seguro en Entry)
             _apiInstance = new MonstrosityApi(this.Monitor);
 
             // 3. Eventos Críticos
-            // GameLaunched: Para integraciones con otros mods (evita el error "Tried to access API before initialized")
             helper.Events.GameLoop.GameLaunched += OnGameLaunched; 
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.Content.AssetRequested += OnAssetRequested;
 
-            // 4. Harmony (Parches de seguridad y lógica)
+            // 4. Harmony
             try 
             {
                 var harmony = new Harmony(this.ModManifest.UniqueID);
@@ -60,27 +60,41 @@ namespace MonstrosityFramework
 
             // 5. Comandos de Consola
             helper.ConsoleCommands.Add("monster_spawn", "Spawnea un monstruo custom. Uso: monster_spawn <id>", SpawnDebugMonster);
-            helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos registrados y su origen.", ListMonsters);
-            helper.ConsoleCommands.Add("monster_reload", "Fuerza la recarga de Content Packs y datos.", ReloadMonsters);
+            helper.ConsoleCommands.Add("monster_list", "Lista todos los monstruos registrados.", ListMonsters);
+            helper.ConsoleCommands.Add("monster_reload", "Recarga configuración.", ReloadMonsters);
         }
 
-        // --- INICIALIZACIÓN DIFERIDA (Fix del Error Rojo) ---
         private void OnGameLaunched(object sender, GameLaunchedEventArgs e)
         {
-            // A. Integración con SpaceCore (Skills / Serialización)
-            // SpaceCoreBridge maneja internamente la verificación de si el mod existe.
-            bool spaceCoreActive = SpaceCoreBridge.Init(ModHelper, this.Monitor);
-            if (spaceCoreActive)
+            // A. Integración SpaceCore (CRÍTICO PARA GUARDAR PARTIDA)
+            // Intentamos registrar el serializador del CustomMonster
+            try
             {
-                Monitor.Log("Integración SpaceCore: ACTIVA", LogLevel.Info);
+                // Si tienes referencia directa a SpaceCore:
+                // SpaceCore.Api.RegisterSerializerType(typeof(CustomMonster));
+                
+                // Si usas tu Bridge:
+                bool spaceCoreActive = SpaceCoreBridge.Init(ModHelper, this.Monitor);
+                if (spaceCoreActive)
+                {
+                    Monitor.Log("Integración SpaceCore: ACTIVA (Serialización habilitada)", LogLevel.Info);
+                }
+                else
+                {
+                    Monitor.Log("ADVERTENCIA: SpaceCore no encontrado. Los monstruos no se guardarán al dormir.", LogLevel.Warn);
+                }
+            }
+            catch (Exception ex)
+            {
+                Monitor.Log($"Error en integración SpaceCore: {ex.Message}", LogLevel.Error);
             }
 
-            // B. Sistema de Spawns (SpawnInjector)
+            // B. Sistema de Spawns
             try
             {
                 _spawnInjector = new SpawnInjector(this.Monitor);
-                _spawnInjector.Register(ModHelper); // Se suscribe a Player.Warped
-                Monitor.Log("Sistema de Spawns: ACTIVO (Monitoreando minas)", LogLevel.Info);
+                _spawnInjector.Register(ModHelper); 
+                Monitor.Log("Sistema de Spawns: ACTIVO", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -97,7 +111,6 @@ namespace MonstrosityFramework
 
         private void OnAssetRequested(object sender, AssetRequestedEventArgs e)
         {
-            // Provee el diccionario vacío para que Content Patcher tenga qué editar
             if (e.Name.IsEquivalentTo(CpAssetPath))
             {
                 e.LoadFrom(() => new Dictionary<string, MonsterData>(), AssetLoadPriority.Exclusive);
@@ -112,32 +125,22 @@ namespace MonstrosityFramework
         private void ReloadMonsters(string command, string[] args)
         {
             Monitor.Log("Iniciando carga de monstruos...", LogLevel.Info);
-            MonsterRegistry.Clear(); // Limpia caché anterior para recarga limpia
+            MonsterRegistry.Clear(); 
 
             int totalLoaded = 0;
 
-            // ---------------------------------------------------------
-            // MODO 1: CARGA NATIVA (ContentPackFor) - Para tu "Demo"
-            // ---------------------------------------------------------
-            // Busca carpetas en Mods/ que digan "ContentPackFor": { "UniqueID": "TuMod" }
+            // MODO 1: Content Packs
             foreach (IContentPack pack in ModHelper.ContentPacks.GetOwned())
             {
-                Monitor.Log($"Leyendo Content Pack: {pack.Manifest.Name}", LogLevel.Trace);
-                
                 try
                 {
-                    // Intenta leer 'monsters.json'
                     var packMonsters = pack.ReadJsonFile<Dictionary<string, MonsterData>>("monsters.json");
-
                     if (packMonsters != null)
                     {
                         foreach (var kvp in packMonsters)
                         {
-                            // IMPORTANTE: Pasamos 'pack' para que RegisteredMonster pueda cargar 
-                            // las texturas (assets/xyz.png) desde dentro de ESE mod.
                             MonsterRegistry.Register(kvp.Key, kvp.Value, pack, pack.Manifest);
                         }
-                        Monitor.Log($"[PACK] {pack.Manifest.Name}: +{packMonsters.Count} monstruos.", LogLevel.Info);
                         totalLoaded += packMonsters.Count;
                     }
                 }
@@ -147,9 +150,7 @@ namespace MonstrosityFramework
                 }
             }
 
-            // ---------------------------------------------------------
-            // MODO 2: CONTENT PATCHER (EditData) - Para usuarios externos
-            // ---------------------------------------------------------
+            // MODO 2: Content Patcher
             try 
             {
                 var cpData = ModHelper.GameContent.Load<Dictionary<string, MonsterData>>(CpAssetPath);
@@ -157,10 +158,8 @@ namespace MonstrosityFramework
                 {
                     foreach (var kvp in cpData)
                     {
-                        // "CP." prefijo técnico, pack = null porque las texturas vienen por ruta global
                         MonsterRegistry.Register($"CP.{kvp.Key}", kvp.Value, null, ModManifest);
                     }
-                    Monitor.Log($"[CP] Content Patcher: +{cpData.Count} monstruos.", LogLevel.Info);
                     totalLoaded += cpData.Count;
                 }
             }
@@ -169,15 +168,8 @@ namespace MonstrosityFramework
                 Monitor.Log($"[CP] Error cargando datos inyectados: {ex.Message}", LogLevel.Warn);
             }
 
-            // Resumen
             if (command != "auto") 
-            {
-                Monitor.Log($"Recarga completada. Total monstruos activos: {totalLoaded}", LogLevel.Alert);
-            }
-            else if (totalLoaded == 0)
-            {
-                Monitor.Log("No se encontraron monstruos. Asegúrate de tener instalado 'Monstrosity Demo' o configurar Content Patcher.", LogLevel.Warn);
-            }
+                Monitor.Log($"Recarga completada. Total: {totalLoaded}", LogLevel.Alert);
         }
 
         // --- COMANDOS DEBUG ---
@@ -186,23 +178,24 @@ namespace MonstrosityFramework
         {
             if (!Context.IsWorldReady || args.Length < 1) 
             {
-                Monitor.Log("Error: Debes estar en partida. Uso: monster_spawn <id>", LogLevel.Warn);
+                Monitor.Log("Uso: monster_spawn <id>", LogLevel.Warn);
                 return;
             }
 
             string id = args[0];
             if (!MonsterRegistry.IsRegistered(id))
             {
-                Monitor.Log($"Error: El ID '{id}' no existe en el registro.", LogLevel.Error);
+                Monitor.Log($"Error: El ID '{id}' no existe.", LogLevel.Error);
                 return;
             }
 
             try 
             {
+                // Spawnear ligeramente a la derecha del jugador
                 Vector2 pos = Game1.player.Position + new Vector2(64, 0); 
                 var monster = new CustomMonster(id, pos);
                 Game1.currentLocation.characters.Add(monster);
-                Monitor.Log($"Éxito: Spawneado '{id}' en {pos}.", LogLevel.Info);
+                Monitor.Log($"Éxito: Spawneado '{id}'.", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -224,13 +217,8 @@ namespace MonstrosityFramework
             foreach (var id in ids)
             {
                 var monster = MonsterRegistry.Get(id);
-                // Determinar fuente para mostrar al usuario
-                string source = monster.SourcePack != null 
-                    ? $"[Pack: {monster.SourcePack.Manifest.Name}]" 
-                    : "[CP/Global]";
-                
+                string source = monster.SourcePack != null ? $"[Pack: {monster.SourcePack.Manifest.Name}]" : "[CP/Global]";
                 string behavior = monster.Data?.BehaviorType ?? "Default";
-                
                 Monitor.Log($"- {id} | {source} | IA: {behavior}", LogLevel.Info);
             }
         }
