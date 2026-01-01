@@ -1,97 +1,107 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
+using StardewValley.Tools;
 using System;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
     public class RockCrabBehavior : MonsterBehavior
     {
+        // NetState: 0 = Escondido, 1 = Activo
+        // NetFlag: true = Caparazón roto (shellGone)
+        // LocalData "shellHealth": Vida del caparazón
+
+        public override void Initialize(CustomMonster monster)
+        {
+            monster.SetVar("shellHealth", GetCustomInt(monster, "ShellHealth", 5));
+            monster.NetState.Value = 0; 
+            monster.NetFlag.Value = false;
+            monster.Sprite.currentFrame = 0; // Frame roca
+        }
+
         public override void Update(CustomMonster monster, GameTime time)
         {
-            int baseRowStart = 0;
-            switch(monster.FacingDirection)
-            {
-                case 2: baseRowStart = 0; break; 
-                case 1: baseRowStart = 4; break; 
-                case 0: baseRowStart = 8; break; 
-                case 3: baseRowStart = 12; break;
-            }
+            bool shellGone = monster.NetFlag.Value;
+            int state = monster.NetState.Value;
 
-            if (monster.AIState == 0) // ESCONDIDO
+            if (!shellGone && state == 0) // ESCONDIDO
             {
-                monster.IsInvincibleOverride = true; 
-                monster.DamageToFarmer = 0;
-                monster.Sprite.currentFrame = baseRowStart; 
-                monster.Sprite.StopAnimation(); 
-                monster.HideShadow = true; 
                 monster.IsWalkingTowardPlayer = false;
+                monster.Halt();
+                monster.Sprite.currentFrame = 0; 
 
-                if (IsPlayerWithinRange(monster, 3)) WakeUp(monster);
-            }
-            else if (monster.AIState == 1) // DESPERTANDO
-            {
-                monster.HideShadow = false; 
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                monster.Sprite.Animate(time, 1, 3, 150f);
-                if (monster.StateTimer <= 0) 
-                { 
-                    monster.AIState = 2; 
-                    monster.IsInvincibleOverride = false; 
-                    var data = GetData(monster);
-                    monster.DamageToFarmer = data?.DamageToFarmer ?? 10;
+                // Despertar si el jugador está cerca
+                if (IsPlayerWithinRange(monster, 2)) 
+                {
+                    monster.NetState.Value = 1;
+                    monster.Sprite.currentFrame = 1;
                 }
             }
-            else if (monster.AIState == 2) // CAMINANDO
+            else // ACTIVO (Sin caparazón o persiguiendo)
             {
-                monster.HideShadow = false;
-                monster.IsInvincibleOverride = false;
-                if (!IsPlayerWithinRange(monster, 10)) { monster.AIState = 0; Game1.playSound("stoneStep"); return; }
-                MoveTowardPlayer(monster, monster.Speed);
-                if (monster.IsWalkingTowardPlayer) monster.Sprite.Animate(time, baseRowStart + 1, 3, 150f);
-            }
-            else if (monster.AIState == 3) // SIN CAPARAZÓN
-            {
-                monster.DamageToFarmer = 0;
-                monster.HideShadow = false;
-                Vector2 away = monster.Position - monster.Player.Position;
-                if (away != Vector2.Zero) away.Normalize();
-                int fleeSpeed = monster.Speed + 2; 
-                monster.xVelocity = away.X * fleeSpeed;
-                monster.yVelocity = away.Y * fleeSpeed;
-                monster.faceGeneralDirection(monster.Position + away * 10);
-                monster.MovePosition(time, Game1.viewport, Game1.currentLocation);
-                monster.Sprite.Animate(time, 16, 4, 100f);
+                monster.IsWalkingTowardPlayer = true;
+                monster.moveTowardPlayerThreshold.Value = 15;
+
+                if (monster.isMoving())
+                {
+                    if (shellGone) 
+                    {
+                        // Animación rápida sin concha (Frames 16+)
+                        monster.Sprite.currentFrame = 16 + (int)((Game1.currentGameTime.TotalGameTime.TotalMilliseconds % 600) / 150);
+                    }
+                    else
+                    {
+                         monster.Sprite.AnimateDown(time);
+                    }
+                }
             }
         }
 
         public override int OnTakeDamage(CustomMonster monster, int damage, bool isBomb, Farmer who)
         {
-            if (isBomb && monster.AIState != 3)
+            bool shellGone = monster.NetFlag.Value;
+            int actualDamage = Math.Max(1, damage - (int)monster.resilience.Value);
+
+            // 1. BOMBA (Instakill de caparazón)
+            if (isBomb && !shellGone)
             {
-                Game1.playSound("breakingGlass");
-                monster.AIState = 3; 
-                monster.IsInvincibleOverride = false;
-                monster.resilience.Value = 0; // Fix: resilience
-                return damage; 
+                monster.NetFlag.Value = true;
+                monster.NetState.Value = 1;
+                monster.currentLocation.playSound("stoneCrack");
+                return actualDamage;
             }
-            if (monster.AIState == 0)
+
+            // 2. PICO (Daña caparazón)
+            if (!shellGone && who.CurrentTool is Pickaxe)
             {
-                Game1.playSound("hitRock");
-                WakeUp(monster);
+                monster.currentLocation.playSound("hammer");
+                monster.ModVar("shellHealth", -1);
+                monster.shake(500);
+                monster.NetState.Value = 0; // Esconderse para recibir golpe
+                
+                // Empuje
+                Vector2 away = Utility.getAwayFromPlayerTrajectory(monster.GetBoundingBox(), who);
+                monster.setTrajectory((int)away.X, (int)away.Y);
+
+                if (monster.GetVar("shellHealth") <= 0)
+                {
+                    monster.NetFlag.Value = true; // Romper
+                    monster.NetState.Value = 1;
+                    monster.currentLocation.playSound("stoneCrack");
+                    Game1.createRadialDebris(monster.currentLocation, 14, monster.TilePoint.X, monster.TilePoint.Y, 6, false);
+                }
+                return 0; // El pico golpea la roca, no al HP
+            }
+
+            // 3. GOLPE EN ROCA (Invulnerable)
+            if (!shellGone && monster.Sprite.currentFrame == 0)
+            {
+                monster.currentLocation.playSound("crafting");
                 return 0; 
             }
-            return damage;
-        }
 
-        private void WakeUp(CustomMonster monster)
-        {
-            if (monster.AIState == 0)
-            {
-                monster.AIState = 1;
-                monster.StateTimer = 500f; 
-                Game1.playSound("stoneCrack");
-                monster.shake(Game1.random.Next(2, 4));
-            }
+            monster.currentLocation.playSound("hitEnemy");
+            return actualDamage;
         }
     }
 }
