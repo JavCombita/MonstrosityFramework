@@ -3,6 +3,7 @@ using StardewValley;
 using System;
 using MonstrosityFramework.Framework.Registries;
 using MonstrosityFramework.Framework.Data;
+using MonstrosityFramework.Entities;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
