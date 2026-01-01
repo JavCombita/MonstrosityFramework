@@ -105,10 +105,14 @@ namespace MonstrosityFramework.Entities.Behaviors
                 }
 
                 monster.IsWalkingTowardPlayer = false;
-                // Moverse hacia la pareja
-                Vector2 trajectory = Utility.getVelocityTowardPoint(monster.GetBoundingBox().Center, mate.GetBoundingBox().Center, monster.Speed);
+                
+                // CORRECCIÓN AQUÍ: Convertir Point a Vector2 explícitamente
+                Vector2 myCenter = new Vector2(monster.GetBoundingBox().Center.X, monster.GetBoundingBox().Center.Y);
+                Vector2 mateCenter = new Vector2(mate.GetBoundingBox().Center.X, mate.GetBoundingBox().Center.Y);
+
+                Vector2 trajectory = Utility.getVelocityTowardPoint(myCenter, mateCenter, monster.Speed);
                 monster.xVelocity = trajectory.X;
-                monster.yVelocity = -trajectory.Y; // Stardew Y invertida
+                monster.yVelocity = -trajectory.Y; 
 
                 if (Vector2.Distance(monster.Position, mate.Position) < 64f)
                 {
