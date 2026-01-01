@@ -1,158 +1,174 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
 using System;
+using System.Linq;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
     public class SlimeBehavior : MonsterBehavior
     {
-        // 0=Idle/Drift, 1=Cargando, 2=Saltando, 3=Cooldown
+        private const int MatingRange = 128;
+
+        public override void Initialize(CustomMonster monster)
+        {
+            // Estado inicial Vanilla
+            monster.SetVar("readyToJump", -1);
+            monster.Slipperiness = 3;
+            monster.SetVar("readyToMate", Game1.random.Next(10000, 120000)); // 10s a 2m
+            
+            // Configurar color si existe en JSON (para CustomMonster.draw)
+            Color c = GetCustomColor(monster, "Tint", Color.White);
+            if (c != Color.White)
+            {
+                monster.SetVar("TintR", c.R);
+                monster.SetVar("TintG", c.G);
+                monster.SetVar("TintB", c.B);
+            }
+        }
 
         public override void Update(CustomMonster monster, GameTime time)
         {
-            float vision = GetVisionRange(monster, 8f);
+            float readyToJump = monster.GetVar("readyToJump", -1);
 
-            // --- ESTADO 0: IDLE / DRIFT ---
-            if (monster.AIState == 0)
+            // --- 1. LÓGICA DE SALTO ---
+            if (readyToJump > 0)
             {
-                monster.isGlider.Value = false;
-                monster.rotation = 0f;
+                // ESTADO: CARGANDO
+                monster.ModVar("readyToJump", -time.ElapsedGameTime.Milliseconds);
+                monster.Halt(); 
+                monster.IsWalkingTowardPlayer = false;
 
-                monster.GenericTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.GenericTimer <= 0)
+                // Animación "Aplastarse" (Frames 16-19)
+                int frameOffset = (800 - (int)readyToJump) / 200;
+                monster.Sprite.currentFrame = 16 + Math.Max(0, Math.Min(3, frameOffset));
+
+                // ¡SALTO!
+                if (monster.GetVar("readyToJump") <= 0)
                 {
-                    monster.GenericTimer = Game1.random.Next(2000, 5000); 
-                    monster.FacingDirection = Game1.random.Next(0, 4); 
-                }
-                monster.Sprite.Animate(time, monster.FacingDirection * 4, 4, 200f); 
+                    monster.IsWalkingTowardPlayer = true;
+                    monster.SetVar("readyToJump", -1);
+                    monster.Slipperiness = 10; // Muy resbaladizo en el aire
 
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
-                {
-                    monster.StateTimer = Game1.random.Next(500, 1500);
-                    
-                    if (IsPlayerWithinRange(monster, vision))
-                    {
-                        Vector2 trajectory = monster.Player.Position - monster.Position;
-                        if (trajectory != Vector2.Zero) trajectory.Normalize();
-                        monster.xVelocity = trajectory.X * (monster.Speed * 0.5f); 
-                        monster.yVelocity = trajectory.Y * (monster.Speed * 0.5f);
-                    }
-                    else
-                    {
-                        monster.xVelocity = (float)(Game1.random.NextDouble() - 0.5) * monster.Speed;
-                        monster.yVelocity = (float)(Game1.random.NextDouble() - 0.5) * monster.Speed;
-                    }
-                }
+                    // Física Vanilla: Invertir vector y dividir por 2
+                    Vector2 trajectory = Utility.getAwayFromPlayerTrajectory(monster.GetBoundingBox(), monster.Player);
+                    monster.xVelocity = (-trajectory.X / 2f);
+                    monster.yVelocity = (-trajectory.Y / 2f);
 
-                monster.Position += new Vector2(monster.xVelocity, monster.yVelocity);
-                CheckMapBounds(monster);
-
-                if (IsPlayerWithinRange(monster, vision) && Game1.random.NextDouble() < 0.03)
-                {
-                    monster.AIState = 1; 
-                    monster.StateTimer = 600f; 
-                    monster.Halt(); 
-                    monster.xVelocity = 0; monster.yVelocity = 0;
-                    Game1.playSound("slimeHit");
+                    if (Utility.isOnScreen(monster.Position, 128)) monster.currentLocation.localSound("slime");
+                    monster.Sprite.currentFrame = 1; // Frame salto
                 }
+                return; // Importante: No procesar movimiento normal ni apareamiento mientras carga
             }
             
-            // --- ESTADO 1: CARGANDO (16-17) ---
-            else if (monster.AIState == 1)
+            // Si no está cargando, movimiento normal
+            if (readyToJump <= 0)
             {
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                monster.Sprite.Animate(time, 16, 2, 100f); 
-                monster.shake(Game1.random.Next(1, 3));    
+                // Animar si se mueve
+                if (Math.Abs(monster.xVelocity) >= 0.5f || Math.Abs(monster.yVelocity) >= 0.5f)
+                    monster.Sprite.AnimateDown(time);
                 
-                if (monster.StateTimer <= 0)
+                // Reducir fricción al aterrizar
+                if (monster.Slipperiness > 3 && Math.Abs(monster.xVelocity) < 0.2f && Math.Abs(monster.yVelocity) < 0.2f)
+                    monster.Slipperiness = 3;
+
+                monster.moveTowardPlayerThreshold.Value = 8;
+                
+                // DECISIÓN DE SALTAR (Random tick chance)
+                // Usamos GetCustomFloat para permitir Slimes "saltarines" (Config JSON: JumpChance)
+                if (IsPlayerWithinRange(monster, GetVisionRange(monster, 8)) && 
+                    Game1.random.NextDouble() < GetCustomFloat(monster, "JumpChance", 0.01f))
                 {
-                    monster.AIState = 2; 
-                    monster.StateTimer = 1000f; 
-                    monster.isGlider.Value = true; 
-                    Game1.playSound("slimeJump");
-                    
-                    Vector2 target = monster.Player.Position;
-                    Vector2 trajectory = target - monster.Position;
-                    if (trajectory != Vector2.Zero) trajectory.Normalize();
-                    
-                    float jumpSpeed = monster.Speed * 6f; 
-                    monster.xVelocity = trajectory.X * jumpSpeed;
-                    monster.yVelocity = trajectory.Y * jumpSpeed;
+                    monster.SetVar("readyToJump", GetCustomInt(monster, "JumpChargeTime", 800));
                 }
             }
-            
-            // --- ESTADO 2: EN EL AIRE (18-19) ---
-            else if (monster.AIState == 2)
-            {
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                
-                // FIX CS1612: Modificar Position asignando un nuevo Vector2
-                monster.Position += new Vector2(monster.xVelocity, monster.yVelocity);
-                
-                monster.Sprite.Animate(time, 18, 2, 100f); 
 
-                // Colisión Jugador
-                if (monster.GetBoundingBox().Intersects(monster.Player.GetBoundingBox()))
+            // --- 2. LÓGICA DE REPRODUCCIÓN (MATING) ---
+            // Solo si está activado en JSON: "CanMate": "1"
+            if (readyToJump <= 0 && GetCustomInt(monster, "CanMate", 0) == 1)
+            {
+                ProcessMating(monster, time);
+            }
+        }
+
+        private void ProcessMating(CustomMonster monster, GameTime time)
+        {
+            float mateTimer = monster.GetVar("readyToMate");
+            CustomMonster mate = monster.GetObj<CustomMonster>("Mate");
+
+            // A) Ya tiene pareja
+            if (mate != null)
+            {
+                if (mate.Health <= 0 || mate.currentLocation != monster.currentLocation)
                 {
-                    monster.Player.takeDamage(monster.DamageToFarmer, false, null);
-                    Land(monster, 1000f); 
+                    monster.RemoveObj("Mate");
                     return;
                 }
 
-                // FIX CS1501: Detección de Colisión con Paredes usando método estándar
-                // Si isCollidingPosition devuelve true, chocó contra algo
-                if (Game1.currentLocation.isCollidingPosition(monster.GetBoundingBox(), Game1.viewport, false, 0, false, monster))
-                {
-                    Land(monster, 500f);
-                }
+                monster.IsWalkingTowardPlayer = false;
+                // Moverse hacia la pareja
+                Vector2 trajectory = Utility.getVelocityTowardPoint(monster.GetBoundingBox().Center, mate.GetBoundingBox().Center, monster.Speed);
+                monster.xVelocity = trajectory.X;
+                monster.yVelocity = -trajectory.Y; // Stardew Y invertida
 
-                if (monster.StateTimer <= 0) Land(monster, 1500f); 
+                if (Vector2.Distance(monster.Position, mate.Position) < 64f)
+                {
+                    SpawnBaby(monster, mate);
+                    ResetMating(monster);
+                    ResetMating(mate);
+                    mate.RemoveObj("Mate");
+                    monster.RemoveObj("Mate");
+                }
             }
-            
-            // --- ESTADO 3: ATERRIZAJE ---
-            else if (monster.AIState == 3)
+            // B) Buscando pareja (Cooldown)
+            else if (mateTimer > 0)
             {
-                monster.xVelocity = 0; monster.yVelocity = 0;
-                monster.Sprite.Animate(time, 0, 4, 300f); 
-                
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
+                monster.ModVar("readyToMate", -time.ElapsedGameTime.Milliseconds);
+            }
+            // C) Buscar nueva pareja
+            else
+            {
+                var candidate = monster.currentLocation.characters.OfType<CustomMonster>().FirstOrDefault(c => 
+                    c != monster &&
+                    c.MonsterSourceId.Value == monster.MonsterSourceId.Value &&
+                    c.GetVar("readyToMate") <= 0 &&
+                    c.GetObj<CustomMonster>("Mate") == null &&
+                    Vector2.Distance(monster.Position, c.Position) < MatingRange * 2
+                );
+
+                if (candidate != null)
                 {
-                    monster.AIState = 0; 
+                    monster.SetObj("Mate", candidate);
+                    candidate.SetObj("Mate", monster);
+                    monster.doEmote(20); // Corazón
+                    candidate.doEmote(20);
                 }
             }
         }
 
-        private void CheckMapBounds(CustomMonster m)
+        private void SpawnBaby(CustomMonster p1, CustomMonster p2)
         {
-             if (m.Position.X < 0) m.xVelocity = Math.Abs(m.xVelocity);
-             if (m.Position.X > Game1.currentLocation.Map.DisplayWidth) m.xVelocity = -Math.Abs(m.xVelocity);
-             if (m.Position.Y < 0) m.yVelocity = Math.Abs(m.yVelocity);
-             if (m.Position.Y > Game1.currentLocation.Map.DisplayHeight) m.yVelocity = -Math.Abs(m.yVelocity);
+            var baby = new CustomMonster(p1.MonsterSourceId.Value, p1.Position);
+            baby.ReloadData();
+            baby.MaxHealth = (p1.MaxHealth + p2.MaxHealth) / 2;
+            baby.Health = baby.MaxHealth;
+            baby.DamageToFarmer = Math.Max(1, (p1.DamageToFarmer + p2.DamageToFarmer) / 2);
+            baby.Scale = 0.6f; // Pequeño
+            p1.currentLocation.characters.Add(baby);
+            p1.currentLocation.playSound("slime");
         }
 
-        private void Land(CustomMonster monster, float cooldown)
+        private void ResetMating(CustomMonster m)
         {
-            monster.AIState = 3; 
-            monster.StateTimer = cooldown;
-            monster.isGlider.Value = false; 
-            monster.xVelocity = 0;
-            monster.yVelocity = 0;
-            if (Game1.currentLocation != null) Game1.playSound("slimeHit");
+            m.SetVar("readyToMate", 120000); // 2 min cooldown
+            m.IsWalkingTowardPlayer = true;
         }
 
         public override int OnTakeDamage(CustomMonster monster, int damage, bool isBomb, Farmer who)
         {
-            if (monster.AIState == 1 && Game1.random.NextDouble() < 0.4) 
-            {
-                monster.AIState = 3; 
-                monster.StateTimer = 500f;
-                Vector2 knockback = monster.Position - who.Position;
-                if (knockback != Vector2.Zero) knockback.Normalize();
-                monster.xVelocity = knockback.X * 5f;
-                monster.yVelocity = knockback.Y * 5f;
-            }
+            monster.SetVar("readyToJump", -1); // Cancelar salto al ser golpeado
+            monster.IsWalkingTowardPlayer = true;
+            monster.Slipperiness = 3;
+            monster.currentLocation.playSound("slimeHit");
             return damage;
         }
     }
