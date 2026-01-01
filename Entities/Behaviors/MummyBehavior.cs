@@ -3,6 +3,7 @@ using StardewValley;
 using StardewValley.Enchantments;
 using StardewValley.Tools;
 using System;
+using MonstrosityFramework.Entities;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
