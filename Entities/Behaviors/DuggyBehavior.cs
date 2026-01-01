@@ -1,95 +1,78 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
+using System;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
     public class DuggyBehavior : MonsterBehavior
     {
-        // 0=Bajo Tierra, 1=Saliendo, 2=Arriba, 3=Entrando
+        // Estados: 
+        // 0 = Bajo tierra (NetState)
+        // 1 = Arriba atacando
+        
+        public override void Initialize(CustomMonster monster)
+        {
+            monster.NetState.Value = 0; 
+            monster.HideShadow = true;
+            monster.IsInvisible = true;
+            monster.IsInvincibleOverride = true; // Propiedad custom en CustomMonster
+        }
 
         public override void Update(CustomMonster monster, GameTime time)
         {
-            float detection = GetVisionRange(monster, 4f); 
-
-            // ESTADO 0: BAJO TIERRA
-            if (monster.AIState == 0) 
+            if (monster.NetState.Value == 0) // BAJO TIERRA
             {
-                monster.IsInvisible = true; 
+                monster.IsInvisible = true;
                 monster.HideShadow = true;
-                monster.DamageToFarmer = 0;
-                monster.IsInvincibleOverride = true;
-                monster.Halt(); 
-
-                // DETECCIÓN Y EMBOSCADA
-                if (IsPlayerWithinRange(monster, detection))
-                {
-                    Vector2 targetPos = monster.Player.Position;
-                    // FIX: Convertir pixeles a coordenadas de Tile para verificar
-                    Vector2 targetTile = new Vector2((int)targetPos.X / 64, (int)targetPos.Y / 64);
-                    
-                    // FIX: Usar CanSpawnCharacterHere (Seguro y existente)
-                    if (Game1.currentLocation.CanSpawnCharacterHere(targetTile))
-                    {
-                        monster.Position = targetPos; // Teleport bajo el jugador
-                        
-                        Game1.playSound("dig");
-                        monster.AIState = 1; 
-                        monster.StateTimer = 400f; 
-                        monster.IsInvisible = false;
-                        monster.HideShadow = false;
-                        monster.IsInvincibleOverride = false;
-                        
-                        var data = GetData(monster);
-                        monster.DamageToFarmer = data?.DamageToFarmer ?? 10;
-                        monster.Sprite.currentFrame = 0;
-                    }
-                }
-            }
-            // ESTADO 1: SALIENDO
-            else if (monster.AIState == 1)
-            {
-                monster.Sprite.Animate(time, 0, 4, 100f); 
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
-                {
-                    monster.AIState = 2; // Arriba
-                    monster.StateTimer = 2000f; 
-                }
-            }
-            // ESTADO 2: ARRIBA
-            else if (monster.AIState == 2)
-            {
-                monster.Sprite.Animate(time, 4, 4, 150f); 
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
-                {
-                    monster.AIState = 3; // Entrando
-                    monster.StateTimer = 400f;
-                }
-            }
-            // ESTADO 3: ENTERRÁNDOSE
-            else if (monster.AIState == 3)
-            {
+                monster.DamageToFarmer = 0; 
                 monster.IsInvincibleOverride = true; 
-                monster.Sprite.Animate(time, 8, 4, 100f); 
 
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer <= 0)
+                // Hack visual: Mantener HP lleno mientras está abajo
+                if (monster.Health < monster.MaxHealth) monster.Health = monster.MaxHealth;
+
+                // Detección (Duggy.cs check)
+                if (IsPlayerWithinRange(monster, 3))
                 {
-                    Game1.currentLocation.temporarySprites.Add(new TemporaryAnimatedSprite(
-                        monster.Sprite.textureName.Value, 
-                        new Rectangle(11 * monster.Sprite.SpriteWidth, 0, monster.Sprite.SpriteWidth, monster.Sprite.SpriteHeight), 
-                        monster.Position,
-                        false, 0f, Color.White)
-                    {
-                        layerDepth = 0.0001f, 
-                        interval = 2000f, 
-                        animationLength = 1,
-                        id = monster.GetHashCode() 
-                    });
+                    // IMPORTANTE: Moverse debajo del jugador antes de salir
+                    monster.Position = monster.Player.Position; 
+                    
+                    monster.NetState.Value = 1;
+                    monster.StateTimer = 0; // Timer de animación manual
+                    monster.currentLocation.playSound("Duggy");
+                    monster.IsInvisible = false;
+                }
+            }
+            else // ARRIBA (ATACANDO)
+            {
+                monster.IsInvisible = false;
+                monster.HideShadow = false;
+                monster.IsInvincibleOverride = false;
+                monster.DamageToFarmer = GetData(monster)?.DamageToFarmer ?? 8;
 
-                    monster.AIState = 0; 
-                    monster.StateTimer = 1000f; 
+                // Control de animación manual basado en tiempo
+                monster.StateTimer += time.ElapsedGameTime.Milliseconds;
+                float t = monster.StateTimer;
+
+                if (t < 400) 
+                {
+                    // Saliendo (Frames 0-3)
+                    monster.Sprite.currentFrame = (int)(t / 100); 
+                }
+                else if (t < 1000) 
+                {
+                    // Idle/Atacando (Frames 4-7)
+                    monster.Sprite.currentFrame = 4 + (int)((t - 400) / 150) % 4;
+                }
+                else if (t < 1400) 
+                {
+                    // Bajando (Frames invertidos 3-0)
+                    monster.Sprite.currentFrame = 3 - (int)((t - 1000) / 100);
+                }
+                else 
+                {
+                    // Volver a esconderse
+                    monster.NetState.Value = 0; 
+                    monster.Position = new Vector2(-1000, -1000); // Mover lejos visualmente
                 }
             }
         }
