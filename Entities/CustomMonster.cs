@@ -14,23 +14,23 @@ namespace MonstrosityFramework.Entities
     [XmlType("Mods_JavCombita_Monstrosity_CustomMonster")] 
     public class CustomMonster : Monster
     {
-        // --- SINCRONIZACIÓN DE RED ---
+        // --- SINCRONIZACIÓN DE RED (Vital para Multiplayer) ---
         public readonly NetString MonsterSourceId = new();
         
-        // --- ESTADO PÚBLICO (Vital para los Behaviors) ---
-        [XmlIgnore] public float StateTimer = 0f;
-        [XmlIgnore] public int AIState = 0; 
-        [XmlIgnore] public bool IsInvincibleOverride = false;
+        // Variables genéricas sincronizadas para estados visuales (Ej: Cangrejo escondido)
+        public readonly NetInt NetState = new NetInt(0); 
+        public readonly NetBool NetFlag = new NetBool(false);
+        public readonly NetFloat NetTimer = new NetFloat(0f);
+
+        // --- MEMORIA LOCAL (Cerebro del Behavior) ---
+        // Variables matemáticas (contadores, timers, flags internos)
+        [XmlIgnore] public Dictionary<string, float> LocalData = new Dictionary<string, float>();
         
-        // Variables auxiliares genéricas
-        [XmlIgnore] public float GenericTimer = 0f; 
-        [XmlIgnore] public bool GenericFlag = false;
-        
+        // Referencias a objetos (Pareja, Luz, Target) - NO se guardan en el XML
+        [XmlIgnore] public Dictionary<string, object> LocalObjects = new Dictionary<string, object>();
+
         // --- CEREBRO ---
         private MonsterBehavior _currentBehavior; 
-        private string _cachedBehaviorId = "default";
-        
-        // --- CONTROL INTERNO ---
         private bool _hasLoadedData = false;
         private bool _textureChecked = false;
 
@@ -46,13 +46,30 @@ namespace MonstrosityFramework.Entities
         protected override void initNetFields()
         {
             base.initNetFields();
-            this.NetFields.AddField(MonsterSourceId);
-            this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => { 
-                _hasLoadedData = false; 
-                ReloadData(); 
-            };
+            this.NetFields.AddField(MonsterSourceId)
+                          .AddField(NetState)
+                          .AddField(NetFlag)
+                          .AddField(NetTimer);
+            
+            // Si el ID cambia (ej: sync inicial), recargamos datos
+            this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => { _hasLoadedData = false; ReloadData(); };
         }
 
+        // --- MÉTODOS DE MEMORIA (Sugar Syntax) ---
+        public float GetVar(string key, float def = 0f) => LocalData.ContainsKey(key) ? LocalData[key] : def;
+        public void SetVar(string key, float val) => LocalData[key] = val;
+        public void ModVar(string key, float delta) { if (!LocalData.ContainsKey(key)) LocalData[key] = 0; LocalData[key] += delta; }
+        public bool HasVar(string key) => LocalData.ContainsKey(key);
+
+        public T GetObj<T>(string key) where T : class 
+        {
+            if (LocalObjects.TryGetValue(key, out object val) && val is T tVal) return tVal;
+            return null;
+        }
+        public void SetObj(string key, object val) => LocalObjects[key] = val;
+        public void RemoveObj(string key) => LocalObjects.Remove(key);
+
+        // --- CARGA DE DATOS ---
         public void ReloadData()
         {
             _hasLoadedData = true;
@@ -61,106 +78,126 @@ namespace MonstrosityFramework.Entities
             var entry = MonsterRegistry.Get(MonsterSourceId.Value);
             if (entry == null) { EnsureFallbackTexture(); return; }
 
-            // 1. ASIGNAR ESTRATEGIA (Behavior)
-            _cachedBehaviorId = (entry.Data.BehaviorType ?? "Default").ToLowerInvariant();
-            _currentBehavior = BehaviorFactory.GetBehavior(_cachedBehaviorId);
+            // 1. Configurar Behavior
+            string bId = (entry.Data.BehaviorType ?? "Default").ToLowerInvariant();
+            _currentBehavior = BehaviorFactory.GetBehavior(bId);
 
-            // 2. STATS
+            // 2. Stats
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
-            // Solo curar si es necesario (evita resetear HP en combate multiplayer)
+            // Solo curar si está corrupto o es nuevo spawn
             if (this.Health > this.MaxHealth || this.Health <= 0) this.Health = this.MaxHealth; 
             
             this.DamageToFarmer = entry.Data.DamageToFarmer;
             this.ExperienceGained = entry.Data.Exp;
             this.resilience.Value = entry.Data.Defense;
-            if (this.Speed != entry.Data.Speed) this.Speed = entry.Data.Speed;
-            this.willDestroyObjectsUnderfoot = false;
-
-            // 3. SPRITE
+            this.Speed = entry.Data.Speed;
+            
+            // 3. Sprite
             this.Sprite = new AnimatedSprite(null, 0, entry.Data.SpriteWidth, entry.Data.SpriteHeight);
             try
             {
                 Texture2D customTex = entry.GetTexture();
-                if (customTex != null && !customTex.IsDisposed) 
-                {
-                    this.Sprite.spriteTexture = customTex;
-                }
-                else 
-                {
-                    EnsureFallbackTexture();
-                }
+                if (customTex != null && !customTex.IsDisposed) this.Sprite.spriteTexture = customTex;
+                else EnsureFallbackTexture();
             }
-            catch (Exception) { EnsureFallbackTexture(); }
+            catch { EnsureFallbackTexture(); }
             
-            // FIX GRÁFICO #1: Inicialización Correcta
-            this.Sprite.currentFrame = 0;
             this.Sprite.UpdateSourceRect(); 
-
             this.HideShadow = false;
-            
-            this.AIState = 0;
-            this.StateTimer = 0;
+
+            // 4. Inicializar Behavior Específico
+            _currentBehavior?.Initialize(this);
         }
+
+        // --- CICLO DE JUEGO ---
 
         public override void behaviorAtGameTick(GameTime time)
         {
-            // Seguridad de Textura
-            if (!_textureChecked)
-            {
-                _textureChecked = true;
-                if (this.Sprite?.spriteTexture == null) EnsureFallbackTexture();
-            }
-
+            if (!_textureChecked) { _textureChecked = true; if (this.Sprite?.spriteTexture == null) EnsureFallbackTexture(); }
             if (!_hasLoadedData) ReloadData();
+            
+            // Fix: Posición NaN causa crash
+            if (float.IsNaN(this.Position.X)) { this.Position = Game1.player.Position; }
 
-            // Seguridad de Posición (NaN fix)
-            if (float.IsNaN(this.Position.X) || float.IsNaN(this.Position.Y)) {
-                this.Position = Game1.player.Position + new Vector2(64, 64);
-                this.xVelocity = 0; this.yVelocity = 0;
-            }
-
-            // Delegación al Behavior
             if (_currentBehavior != null)
-            {
                 _currentBehavior.Update(this, time);
-            }
             else
-            {
                 base.behaviorAtGameTick(time); 
-            }
         }
 
-        public override void draw(SpriteBatch b)
+        protected override void updateAnimation(GameTime time)
         {
-            // FIX GRÁFICO #2: Voladores
-            if (this.isGlider.Value && !this.IsInvisible)
-            {
-                // Dibujar encima de paredes
-                float layerDepth = (this.Position.Y + 640f) / 10000f;
-                this.Sprite.draw(b, Game1.GlobalToLocal(Game1.viewport, this.Position), layerDepth);
-            }
-            else
-            {
-                base.draw(b);
-            }
+            if (_currentBehavior != null) 
+                 _currentBehavior.OnUpdateAnimation(this, time);
+            base.updateAnimation(time);
         }
 
         public override int takeDamage(int damage, int xTrajectory, int yTrajectory, bool isBomb, double addedPrecision, Farmer who)
         {
+            int finalDamage = damage;
             if (_currentBehavior != null)
-            {
-                int modifiedDamage = _currentBehavior.OnTakeDamage(this, damage, isBomb, who);
-                if (modifiedDamage <= 0 && damage > 0) return 0; 
-                damage = modifiedDamage;
-            }
-
-            return base.takeDamage(damage, xTrajectory, yTrajectory, isBomb, addedPrecision, who);
+                finalDamage = _currentBehavior.OnTakeDamage(this, damage, isBomb, who);
+            
+            // Si el behavior devuelve < 0, significa "cancelar daño/invulnerable"
+            if (finalDamage < 0) return -1;
+            
+            return base.takeDamage(finalDamage, xTrajectory, yTrajectory, isBomb, addedPrecision, who);
         }
 
-        public override bool isInvincible()
+        public override void deathAnimation()
         {
-            return IsInvincibleOverride || base.isInvincible();
+            if (_currentBehavior != null)
+                _currentBehavior.OnDeath(this);
+            base.deathAnimation();
+        }
+
+        // --- RENDERIZADO (Con soporte para Tint) ---
+        public override void draw(SpriteBatch b)
+        {
+            if (this.IsInvisible) return;
+
+            // Recuperar color si existe (Asignado en Behavior.Initialize), sino Blanco
+            Color tint = Color.White;
+            if (HasVar("TintR"))
+            {
+                tint = new Color((int)GetVar("TintR"), (int)GetVar("TintG"), (int)GetVar("TintB"));
+            }
+
+            // Lógica de dibujo similar a Monster.cs pero aplicando el tint
+            Rectangle sourceRect = this.Sprite.SourceRect;
+            Vector2 position = Game1.GlobalToLocal(Game1.viewport, this.Position) + new Vector2(this.GetBoundingBox().Width / 2, this.GetBoundingBox().Height + this.yOffset);
+            
+            position.X += this.drawOffset.X;
+            position.Y += this.drawOffset.Y;
+
+            float layerDepth = Math.Max(0f, this.drawOnTop ? 0.991f : ((float)this.GetBoundingBox().Bottom / 10000f));
+            
+            // Ajuste para voladores (Gliders)
+            if (this.isGlider.Value)
+            {
+                position.Y -= 64f; // Flotar visualmente
+                layerDepth = (this.Position.Y + 640f) / 10000f; // Layer depth distinta
+            }
+
+            // Sombra
+            if (!this.HideShadow)
+            {
+                this.Sprite.drawShadow(b, Game1.GlobalToLocal(Game1.viewport, this.Position), this.Scale);
+            }
+
+            // Sprite principal con TINT
+            b.Draw(
+                this.Sprite.spriteTexture, 
+                position, 
+                sourceRect, 
+                tint, 
+                this.rotation, 
+                new Vector2(sourceRect.Width / 2, sourceRect.Height), 
+                Math.Max(0.2f, this.Scale) * 4f, 
+                (this.flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None), 
+                layerDepth
+            );
         }
 
         public override List<Item> getExtraDropItems()
@@ -174,7 +211,7 @@ namespace MonstrosityFramework.Entities
                 foreach (var dropData in entry.Data.Drops)
                 {
                     if (Game1.random.NextDouble() <= dropData.Chance)
-                        drops.Add(ItemRegistry.Create(dropData.ItemId, 1));
+                        drops.Add(ItemRegistry.Create(dropData.ItemId, Game1.random.Next(dropData.MinStack, dropData.MaxStack + 1)));
                 }
             }
             return drops;
@@ -183,12 +220,10 @@ namespace MonstrosityFramework.Entities
         private void EnsureFallbackTexture()
         {
             if (this.Sprite == null) this.Sprite = new AnimatedSprite("Characters/Monsters/Shadow Brute", 0, 16, 24);
-            
-            if (this.Sprite.spriteTexture == null || this.Sprite.spriteTexture.IsDisposed)
-            {
-                try { this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute"); } 
-                catch { }
-            }
+            try { 
+                if (this.Sprite.spriteTexture == null) 
+                    this.Sprite.spriteTexture = Game1.content.Load<Texture2D>("Characters/Monsters/Shadow Brute"); 
+            } catch { }
         }
     }
 }
