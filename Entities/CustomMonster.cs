@@ -145,11 +145,12 @@ namespace MonstrosityFramework.Entities
             return base.takeDamage(finalDamage, xTrajectory, yTrajectory, isBomb, addedPrecision, who);
         }
 
-        public override void deathAnimation()
+        protected override void sharedDeathAnimation()
         {
             if (_currentBehavior != null)
                 _currentBehavior.OnDeath(this);
-            base.deathAnimation();
+            
+            base.sharedDeathAnimation();
         }
 
         // --- RENDERIZADO (Con soporte para Tint) ---
