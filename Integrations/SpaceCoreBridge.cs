@@ -1,7 +1,6 @@
 using StardewModdingAPI;
 using MonstrosityFramework.Entities;
 using System;
-using System.Reflection;
 
 namespace MonstrosityFramework.Integrations
 {
@@ -11,29 +10,31 @@ namespace MonstrosityFramework.Integrations
 
         public static bool Init(IModHelper helper, IMonitor monitor)
         {
-            // Verificamos si SpaceCore está cargado
+            // 1. Verificar si SpaceCore está instalado
             if (!helper.ModRegistry.IsLoaded(SpaceCoreId))
             {
-                monitor.Log("SpaceCore no encontrado. Los monstruos no se serializarán.", LogLevel.Warn);
+                monitor.Log("SpaceCore no detectado. Los monstruos NO se guardarán al dormir.", LogLevel.Warn);
                 return false;
             }
 
             try
             {
-                // TRUCO DE REFLECTION: Obtenemos la API usando nuestra interfaz local 'ISpaceCoreApi'
-                // Esto engaña al compilador para que no pida "using SpaceCore;"
+                // 2. Obtener la API usando la Interfaz Fantasma
+                // SMAPI mapeará automáticamente los métodos de SpaceCore a esta interfaz.
                 var api = helper.ModRegistry.GetApi<ISpaceCoreApi>(SpaceCoreId);
 
                 if (api != null)
                 {
+                    // 3. Registrar nuestro tipo
                     api.RegisterSerializerType(typeof(CustomMonster));
-                    monitor.Log("SpaceCore conectado exitosamente.", LogLevel.Info);
+                    
+                    monitor.Log("Integración SpaceCore: ACTIVA (Serialización habilitada).", LogLevel.Info);
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                monitor.Log($"Error conectando con SpaceCore: {ex.Message}", LogLevel.Error);
+                monitor.Log($"Error conectando con la API de SpaceCore: {ex.Message}", LogLevel.Error);
             }
 
             return false;
@@ -41,8 +42,7 @@ namespace MonstrosityFramework.Integrations
     }
 
     // --- INTERFAZ FANTASMA ---
-    // Copiamos la firma del método que necesitamos de SpaceCore.
-    // Como está definida AQUÍ, no necesitamos 'using SpaceCore'.
+    // Define solo lo que necesitamos. SMAPI hace el resto.
     public interface ISpaceCoreApi
     {
         void RegisterSerializerType(Type type);
