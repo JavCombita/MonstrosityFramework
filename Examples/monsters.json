@@ -1,0 +1,175 @@
+{
+  /* ================================================================================
+     MONSTROSITY FRAMEWORK - MASTER CONFIGURATION GUIDE
+     ================================================================================
+     This file demonstrates how to create every type of monster currently supported.
+     
+     NOTE: All "CustomFields" are optional. If omitted, the default values are used.
+  */
+
+  // ==============================================================================
+  // EXAMPLE 1: ADVANCED SHOOTER (Shadow Sniper Style)
+  // Logic: Maintains distance, fires projectiles, strafes.
+  // ==============================================================================
+  "AuthorName.FireMage": {
+    "DisplayName": "Pyromancer",
+    "TexturePath": "assets/fire_mage.png", 
+    "SpriteWidth": 16, 
+    "SpriteHeight": 32, // Supports tall sprites (like Shadow Shaman)
+    
+    // Core Stats
+    "MaxHealth": 80,
+    "DamageToFarmer": 15,
+    "Defense": 2,
+    "Exp": 18,
+    "Speed": 4, // 2 = Slow, 4 = Normal, 6 = Fast
+
+    // AI Configuration
+    "BehaviorType": "Shooter", 
+    "CustomFields": {
+      // -- Global Fields --
+      "DetectionRange": "12",       // (Float) Tiles to spot player. Default: 8.
+
+      // -- Shooter Specific Fields --
+      "ShootSound": "fireball",     // (String) Audio cue ID. Default: "Cowboy_gunshot".
+      "AimTime": "0.5",             // (Float) Seconds to stand still aiming. Default: 0.25.
+      "BurstCount": "3",            // (Int) Projectiles fired per volley. Default: 1.
+      "ProjectileSprite": "14",     // (Int) ID from Projectiles.xnb (14=Fireball, 12=Shadow). Default: 12.
+      "ProjectileSpeed": "15",      // (Float) Travel speed. Default: 12.
+      "ProjectileRange": "15",      // (Int) Tiles the projectile travels. Default: 10.
+      "ProjectileDebuff": "19"      // (String) Debuff ID (12=Burnt, 19=Frozen, 26=Darkness). Default: "26".
+    },
+
+    "Spawn": {
+      "MinMineLevel": 80,
+      "MaxMineLevel": 120,
+      "SpawnWeight": 0.5
+    },
+    "Drops": [ 
+      { "ItemId": "336", "Chance": 0.1 } // Gold Bar
+    ]
+  },
+
+  // ==============================================================================
+  // EXAMPLE 2: SLIME WITH REPRODUCTION
+  // Logic: Jumps, slides, and can create babies with other slimes.
+  // ==============================================================================
+  "AuthorName.LoveSlime": {
+    "DisplayName": "Cupid Slime",
+    "TexturePath": "assets/slime_base.png", // Use a white texture to utilize 'Tint'
+    "SpriteWidth": 16, "SpriteHeight": 24,
+    "MaxHealth": 150, "DamageToFarmer": 10, "Speed": 3,
+
+    "BehaviorType": "Slime",
+    "CustomFields": {
+      // -- Global --
+      "Tint": "#FF69B4",            // (Hex) Colorizes the sprite. Format: #RRGGBB. Default: White.
+      
+      // -- Slime Specific --
+      "JumpChance": "0.05",         // (Float) 0.0 to 1.0. Chance per tick to jump. Default: 0.01.
+      "JumpChargeTime": "400",      // (Int) Milliseconds to "squish" before jumping. Default: 800.
+      "CanMate": "1"                // (Bool) 1=True, 0=False. If true, seeks mate to spawn baby. Default: 0.
+    },
+
+    "Spawn": {
+      "SpecificLocations": [ "Farm" ], // Can spawn on the farm
+      "SpawnWeight": 1.0
+    },
+    "Drops": [ { "ItemId": "766", "Chance": 1.0 } ]
+  },
+
+  // ==============================================================================
+  // EXAMPLE 3: BAT WITH LUNGE (Magma Sprite Style)
+  // Logic: Flies through walls, circles player when hit, charges rapidly.
+  // ==============================================================================
+  "AuthorName.RocketBat": {
+    "DisplayName": "Rocket Bat",
+    "TexturePath": "assets/rocket_bat.png",
+    "MaxHealth": 50, "DamageToFarmer": 12, "Speed": 5,
+
+    "BehaviorType": "Bat",
+    "CustomFields": {
+      // -- Bat Specific --
+      "CanLunge": "1",              // (Bool) Enables "Magma Sprite" charge attack. Default: 0.
+      "LungeSpeed": "30"            // (Float) Velocity during the charge. Default: 25.
+    },
+
+    "Spawn": {
+      "MinMineLevel": 40, "MaxMineLevel": 79
+    }
+  },
+
+  // ==============================================================================
+  // EXAMPLE 4: ROCK CRAB (Camouflage)
+  // Logic: Hides as a rock (Sprite Frame 0). Invulnerable to weapons until hit by Pickaxe/Bomb.
+  // ==============================================================================
+  "AuthorName.HardCrab": {
+    "DisplayName": "Iron Crab",
+    "TexturePath": "assets/iron_crab.png",
+    "MaxHealth": 200, "DamageToFarmer": 15, "Defense": 5,
+
+    "BehaviorType": "RockCrab",
+    "CustomFields": {
+      // -- Rock Crab Specific --
+      "ShellHealth": "10"           // (Int) Number of Pickaxe hits to break shell. Default: 5.
+    },
+
+    "Spawn": { "MinMineLevel": 1, "MaxMineLevel": 120 }
+  },
+
+  // ==============================================================================
+  // EXAMPLE 5: MUMMY (Resurrection)
+  // Logic: Collapses on death. Revives after X seconds unless exploded.
+  // ==============================================================================
+  "AuthorName.FastMummy": {
+    "DisplayName": "Restless Mummy",
+    "TexturePath": "assets/mummy.png",
+    "SpriteWidth": 16, "SpriteHeight": 32,
+    "MaxHealth": 300, "DamageToFarmer": 25, "Speed": 2,
+
+    "BehaviorType": "Mummy",
+    "CustomFields": {
+      // -- Mummy Specific --
+      "RevivalTime": "5000"         // (Int) Milliseconds before reviving. Default: 10000 (10s).
+    },
+
+    "Spawn": { "SpecificLocations": ["SkullCavern"] }
+  },
+
+  // ==============================================================================
+  // EXAMPLE 6: GHOST (Lighting & Float)
+  // Logic: Floats through walls, bobs up/down, emits light.
+  // ==============================================================================
+  "AuthorName.LanternGhost": {
+    "DisplayName": "Lantern Spirit",
+    "TexturePath": "assets/spirit.png",
+    "MaxHealth": 100, "DamageToFarmer": 15, "Speed": 3,
+
+    "BehaviorType": "Ghost",
+    "CustomFields": {
+      // -- Ghost Specific --
+      "HasLight": "1",              // (Bool) If 1, emits light around itself. Default: 0.
+      "LightColor": "#FFFF00"       // (Hex) Color of the light (Yellow). Default: #40FF40 (Green).
+    },
+
+    "Spawn": { "SpecificLocations": ["Farm", "Forest", "DeepWoods"], "SpawnWeight": 0.2 }
+  },
+
+  // ==============================================================================
+  // EXAMPLE 7: DUGGY (Ambush)
+  // Logic: Invulnerable underground. Pops up when player is near.
+  // ==============================================================================
+  "AuthorName.SandTrap": {
+    "DisplayName": "Sand Trap",
+    "TexturePath": "assets/duggy.png",
+    "MaxHealth": 40, "DamageToFarmer": 20, "Speed": 0, // Speed 0 = Stationary
+
+    "BehaviorType": "Duggy",
+    // Uses standard "DetectionRange" from Globals to determine when to pop up.
+    "CustomFields": {
+        "DetectionRange": "3"
+    },
+
+    "Spawn": { "SpecificLocations": ["Desert"] }
+  }
+}
