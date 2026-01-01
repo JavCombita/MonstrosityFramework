@@ -17,17 +17,20 @@ namespace MonstrosityFramework.Entities
         // --- SINCRONIZACIÓN DE RED (Vital para Multiplayer) ---
         public readonly NetString MonsterSourceId = new();
         
-        // Variables genéricas sincronizadas para estados visuales (Ej: Cangrejo escondido)
+        // Variables genéricas sincronizadas para estados visuales
         public readonly NetInt NetState = new NetInt(0); 
         public readonly NetBool NetFlag = new NetBool(false);
         public readonly NetFloat NetTimer = new NetFloat(0f);
 
         // --- MEMORIA LOCAL (Cerebro del Behavior) ---
-        // Variables matemáticas (contadores, timers, flags internos)
         [XmlIgnore] public Dictionary<string, float> LocalData = new Dictionary<string, float>();
         
-        // Referencias a objetos (Pareja, Luz, Target) - NO se guardan en el XML
+        // Referencias a objetos - NO se guardan en el XML
         [XmlIgnore] public Dictionary<string, object> LocalObjects = new Dictionary<string, object>();
+
+        // --- PROPIEDADES ESPECIALES DE CONTROL ---
+        // Esta es la variable que faltaba para el Duggy
+        [XmlIgnore] public bool IsInvincibleOverride = false; 
 
         // --- CEREBRO ---
         private MonsterBehavior _currentBehavior; 
@@ -51,11 +54,10 @@ namespace MonstrosityFramework.Entities
                           .AddField(NetFlag)
                           .AddField(NetTimer);
             
-            // Si el ID cambia (ej: sync inicial), recargamos datos
             this.MonsterSourceId.fieldChangeVisibleEvent += (_, _, _) => { _hasLoadedData = false; ReloadData(); };
         }
 
-        // --- MÉTODOS DE MEMORIA (Sugar Syntax) ---
+        // --- MÉTODOS DE MEMORIA ---
         public float GetVar(string key, float def = 0f) => LocalData.ContainsKey(key) ? LocalData[key] : def;
         public void SetVar(string key, float val) => LocalData[key] = val;
         public void ModVar(string key, float delta) { if (!LocalData.ContainsKey(key)) LocalData[key] = 0; LocalData[key] += delta; }
@@ -85,7 +87,6 @@ namespace MonstrosityFramework.Entities
             // 2. Stats
             this.Name = entry.Data.DisplayName;
             this.MaxHealth = entry.Data.MaxHealth;
-            // Solo curar si está corrupto o es nuevo spawn
             if (this.Health > this.MaxHealth || this.Health <= 0) this.Health = this.MaxHealth; 
             
             this.DamageToFarmer = entry.Data.DamageToFarmer;
@@ -106,7 +107,7 @@ namespace MonstrosityFramework.Entities
             this.Sprite.UpdateSourceRect(); 
             this.HideShadow = false;
 
-            // 4. Inicializar Behavior Específico
+            // 4. Inicializar Behavior
             _currentBehavior?.Initialize(this);
         }
 
@@ -117,7 +118,6 @@ namespace MonstrosityFramework.Entities
             if (!_textureChecked) { _textureChecked = true; if (this.Sprite?.spriteTexture == null) EnsureFallbackTexture(); }
             if (!_hasLoadedData) ReloadData();
             
-            // Fix: Posición NaN causa crash
             if (float.IsNaN(this.Position.X)) { this.Position = Game1.player.Position; }
 
             if (_currentBehavior != null)
@@ -139,10 +139,16 @@ namespace MonstrosityFramework.Entities
             if (_currentBehavior != null)
                 finalDamage = _currentBehavior.OnTakeDamage(this, damage, isBomb, who);
             
-            // Si el behavior devuelve < 0, significa "cancelar daño/invulnerable"
             if (finalDamage < 0) return -1;
             
             return base.takeDamage(finalDamage, xTrajectory, yTrajectory, isBomb, addedPrecision, who);
+        }
+
+        // --- SOBRECARGA CRÍTICA PARA DUGGY ---
+        public override bool isInvincible()
+        {
+            // Si nuestro Behavior dice que es invencible (ej: Duggy bajo tierra), lo respetamos
+            return IsInvincibleOverride || base.isInvincible();
         }
 
         protected override void sharedDeathAnimation()
@@ -153,19 +159,17 @@ namespace MonstrosityFramework.Entities
             base.sharedDeathAnimation();
         }
 
-        // --- RENDERIZADO (Con soporte para Tint) ---
+        // --- RENDERIZADO ---
         public override void draw(SpriteBatch b)
         {
             if (this.IsInvisible) return;
 
-            // Recuperar color si existe (Asignado en Behavior.Initialize), sino Blanco
             Color tint = Color.White;
             if (HasVar("TintR"))
             {
                 tint = new Color((int)GetVar("TintR"), (int)GetVar("TintG"), (int)GetVar("TintB"));
             }
 
-            // Lógica de dibujo similar a Monster.cs pero aplicando el tint
             Rectangle sourceRect = this.Sprite.SourceRect;
             Vector2 position = Game1.GlobalToLocal(Game1.viewport, this.Position) + new Vector2(this.GetBoundingBox().Width / 2, this.GetBoundingBox().Height + this.yOffset);
             
@@ -174,20 +178,17 @@ namespace MonstrosityFramework.Entities
 
             float layerDepth = Math.Max(0f, this.drawOnTop ? 0.991f : ((float)this.GetBoundingBox().Bottom / 10000f));
             
-            // Ajuste para voladores (Gliders)
             if (this.isGlider.Value)
             {
-                position.Y -= 64f; // Flotar visualmente
-                layerDepth = (this.Position.Y + 640f) / 10000f; // Layer depth distinta
+                position.Y -= 64f; 
+                layerDepth = (this.Position.Y + 640f) / 10000f; 
             }
 
-            // Sombra
             if (!this.HideShadow)
             {
                 this.Sprite.drawShadow(b, Game1.GlobalToLocal(Game1.viewport, this.Position), this.Scale);
             }
 
-            // Sprite principal con TINT
             b.Draw(
                 this.Sprite.spriteTexture, 
                 position, 
