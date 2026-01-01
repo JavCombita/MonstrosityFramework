@@ -1,76 +1,160 @@
 using Microsoft.Xna.Framework;
 using StardewValley;
 using System;
+using System.Collections.Generic;
 
 namespace MonstrosityFramework.Entities.Behaviors
 {
     public class BatBehavior : MonsterBehavior
     {
-        // 0=Reposo, 1=Despertando, 2=Vuelo
-        
+        private const float RotationIncrement = (float)Math.PI / 64f;
+
+        public override void Initialize(CustomMonster monster)
+        {
+            monster.HideShadow = true;
+            monster.isGlider.Value = true;
+            
+            // Variables de Estado Vanilla
+            monster.SetVar("wasHitCounter", 0);
+            monster.SetVar("turningRight", 0); // 0: false, 1: true
+            
+            // Variables para Lunge (Embestida tipo Magma Sprite)
+            // Se leen del JSON o usan defaults
+            if (GetCustomInt(monster, "CanLunge", 0) == 1)
+            {
+                monster.SetVar("nextLunge", 2000); 
+                monster.SetVar("lungeTimer", 0);
+                monster.SetVar("isLunging", 0);
+            }
+        }
+
         public override void Update(CustomMonster monster, GameTime time)
         {
-            float vision = GetVisionRange(monster, 6f); 
+            monster.isGlider.Value = true; // Asegurar que vuele
 
-            // ESTADO 0: REPOSO
-            if (monster.AIState == 0)
+            // --- 1. LÓGICA DE EMBESTIDA (LUNGE) ---
+            if (GetCustomInt(monster, "CanLunge", 0) == 1)
             {
-                monster.isGlider.Value = false; 
-                monster.Sprite.currentFrame = 0; 
-                monster.Sprite.StopAnimation();
+                float nextLunge = monster.GetVar("nextLunge");
+                float lungeTimer = monster.GetVar("lungeTimer");
+                bool isLunging = monster.GetVar("isLunging") == 1;
 
-                if (IsPlayerWithinRange(monster, vision))
+                if (isLunging)
                 {
-                    monster.AIState = 1; 
-                    monster.StateTimer = 500f; 
-                    Game1.playSound("batScreech");
+                    // Desaceleración suave
+                    monster.xVelocity = Utility.MoveTowards(monster.xVelocity, 0f, 0.5f);
+                    monster.yVelocity = Utility.MoveTowards(monster.yVelocity, 0f, 0.5f);
+
+                    if (Math.Abs(monster.xVelocity) < 1f && Math.Abs(monster.yVelocity) < 1f)
+                    {
+                        monster.SetVar("isLunging", 0);
+                        monster.SetVar("nextLunge", 3000); // Reset cooldown
+                    }
+                    return; // Si está embistiendo, salta el resto del movimiento
+                }
+                else if (lungeTimer > 0)
+                {
+                    // Cargando la embestida (Vibración)
+                    monster.ModVar("lungeTimer", -time.ElapsedGameTime.Milliseconds);
+                    monster.Halt();
+                    monster.shake(10); 
+
+                    if (monster.GetVar("lungeTimer") <= 0)
+                    {
+                        // ¡LANZARSE!
+                        float lungeSpeed = GetCustomFloat(monster, "LungeSpeed", 25f);
+                        Vector2 target = Utility.getVelocityTowardPlayer(monster.GetBoundingBox().Center, lungeSpeed, monster.Player);
+                        monster.xVelocity = target.X;
+                        monster.yVelocity = -target.Y; // Stardew usa Y invertida a veces en cálculos de velocidad
+                        monster.SetVar("isLunging", 1);
+                        monster.currentLocation.playSound("throw");
+                    }
+                    return;
+                }
+                else if (nextLunge > 0)
+                {
+                    monster.ModVar("nextLunge", -time.ElapsedGameTime.Milliseconds);
+                }
+                else if (IsPlayerWithinRange(monster, 6)) // Rango de activación
+                {
+                    monster.SetVar("lungeTimer", 500); // 0.5s tiempo de carga
+                    monster.currentLocation.playSound("magma_sprite_spot");
                 }
             }
-            // ESTADO 1: DESPERTANDO
-            else if (monster.AIState == 1)
-            {
-                monster.StateTimer -= (float)time.ElapsedGameTime.TotalMilliseconds;
-                if (monster.StateTimer > 333) monster.Sprite.currentFrame = 1;
-                else if (monster.StateTimer > 166) monster.Sprite.currentFrame = 2;
-                else monster.Sprite.currentFrame = 3;
 
-                if (monster.StateTimer <= 0)
+            // --- 2. LÓGICA DE ESPIRAL (AL SER GOLPEADO) ---
+            float hitCounter = monster.GetVar("wasHitCounter");
+            if (hitCounter > 0)
+            {
+                monster.ModVar("wasHitCounter", -time.ElapsedGameTime.Milliseconds);
+
+                // Cálculo matemático de Bat.cs para huir en espiral
+                float xSlope = -(monster.Player.StandingPixel.X - monster.StandingPixel.X);
+                float ySlope = monster.Player.StandingPixel.Y - monster.StandingPixel.Y;
+                float t = Math.Max(1f, Math.Abs(xSlope) + Math.Abs(ySlope));
+                xSlope /= t; 
+                ySlope /= t;
+
+                float targetRotation = (float)Math.Atan2(-ySlope, xSlope) - (float)Math.PI / 2f;
+                float currentRotation = monster.rotation;
+                bool turningRight = monster.GetVar("turningRight") == 1;
+
+                if (Math.Abs(targetRotation) - Math.Abs(currentRotation) > Math.PI * 7.0 / 8.0 && Game1.random.NextBool())
+                    turningRight = true;
+                else if (Math.Abs(targetRotation) - Math.Abs(currentRotation) < Math.PI / 8.0)
+                    turningRight = false;
+                
+                monster.SetVar("turningRight", turningRight ? 1 : 0);
+
+                if (turningRight)
+                    monster.rotation -= (float)Math.Sign(targetRotation - currentRotation) * RotationIncrement;
+                else
+                    monster.rotation += (float)Math.Sign(targetRotation - currentRotation) * RotationIncrement;
+
+                monster.rotation %= (float)Math.PI * 2f;
+            }
+
+            // --- 3. MOVIMIENTO NORMAL ---
+            float maxAccel = Math.Min(5f, Math.Max(1f, 5f - 400f / 64f / 2f));
+            float xComp = (float)Math.Cos(monster.rotation + Math.PI / 2.0);
+            float yComp = -(float)Math.Sin(monster.rotation + Math.PI / 2.0);
+
+            monster.xVelocity += (-xComp) * maxAccel / 6f + (float)Game1.random.Next(-10, 10) / 100f;
+            monster.yVelocity += (-yComp) * maxAccel / 6f + (float)Game1.random.Next(-10, 10) / 100f;
+
+            // Fricción
+            if (Math.Abs(monster.xVelocity) > Math.Abs(-xComp * monster.Speed))
+                monster.xVelocity -= (-xComp) * maxAccel / 6f;
+            if (Math.Abs(monster.yVelocity) > Math.Abs(-yComp * monster.Speed))
+                monster.yVelocity -= (-yComp) * maxAccel / 6f;
+
+            // --- 4. ANIMACIÓN Y SUEÑO ---
+            // Si detecta al jugador o fue golpeado -> Vuela
+            float vision = GetVisionRange(monster, 6);
+            if (IsPlayerWithinRange(monster, vision) || hitCounter > 0)
+            {
+                monster.Sprite.Animate(time, 0, 4, 80f);
+                
+                // Sonido aleteo
+                if (monster.Sprite.currentFrame % 3 == 0 && Utility.isOnScreen(monster.Position, 512) && Game1.random.NextDouble() < 0.05)
                 {
-                    monster.AIState = 2; 
-                    monster.isGlider.Value = true;
+                    monster.currentLocation.localSound("batFlap"); 
                 }
             }
-            // ESTADO 2: VUELO
             else
             {
-                monster.Sprite.Animate(time, 4, 15, 120f);
-                
-                // Persecución directa
-                if (IsPlayerWithinRange(monster, vision * 2)) 
-                {
-                    Vector2 trajectory = monster.Player.Position - monster.Position;
-                    if (trajectory != Vector2.Zero) 
-                    {
-                        trajectory.Normalize();
-                        // Velocidad directa del JSON
-                        monster.xVelocity = trajectory.X * monster.Speed;
-                        monster.yVelocity = trajectory.Y * monster.Speed;
-                    }
-                }
-                else
-                {
-                    monster.xVelocity *= 0.95f;
-                    monster.yVelocity *= 0.95f;
-                }
-                
-                monster.Position += new Vector2(monster.xVelocity, monster.yVelocity);
-                
-                if (monster.GetBoundingBox().Intersects(monster.Player.GetBoundingBox()))
-                {
-                    monster.xVelocity = -monster.xVelocity;
-                    monster.yVelocity = -monster.yVelocity;
-                }
+                // Durmiendo
+                monster.Sprite.currentFrame = 4;
+                monster.xVelocity = 0; 
+                monster.yVelocity = 0;
             }
+        }
+
+        public override int OnTakeDamage(CustomMonster monster, int damage, bool isBomb, Farmer who)
+        {
+            monster.SetVar("wasHitCounter", 500); // Activar espiral 500ms
+            monster.currentLocation.playSound("batScreech");
+            return damage;
         }
     }
 }
