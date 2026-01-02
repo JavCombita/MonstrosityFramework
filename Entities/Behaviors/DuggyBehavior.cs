@@ -28,7 +28,8 @@ namespace MonstrosityFramework.Entities.Behaviors
 
                 if (monster.Health < monster.MaxHealth) monster.Health = monster.MaxHealth;
 
-                if (IsPlayerWithinRange(monster, 3))
+                // FIX: Usar GetVisionRange para respetar "DetectionRange" del JSON
+                if (IsPlayerWithinRange(monster, GetVisionRange(monster, 3)))
                 {
                     monster.Position = monster.Player.Position; 
                     monster.NetState.Value = 1;
